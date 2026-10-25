@@ -23,7 +23,8 @@ Column {
     var devices = status.devices || []
     for (var i = 0; i < candidates.length; i++) {
       seen[candidates[i].id] = true
-      list.push({ id: candidates[i].id, name: candidates[i].name, detail: candidates[i].id, selected: candidates[i].selected === true })
+      list.push({ id: candidates[i].id, name: candidates[i].name, selected: candidates[i].selected === true,
+        detail: candidates[i].id + (root.status.vmRunning ? (candidates[i].inWindows ? " · en Windows" : " · en Linux") : "") })
     }
     for (var j = 0; j < devices.length; j++) {
       if (seen[devices[j].id]) continue
@@ -43,7 +44,7 @@ Column {
     textFormat: Text.PlainText
     text: root.status.vmInstalled === false
       ? "Instala Windows desde el menú de Omarchy para usar esto."
-      : "Para apps que solo existen en Windows (Glorious CORE, iCUE...). Con el interruptor encendido, Windows queda preparado la próxima vez que lo abras; los dispositivos siguen en Linux hasta que pulses \"Pasar a Windows\". Mientras estén en Windows, Linux no los tiene."
+      : "Para apps que solo existen en Windows (Glorious CORE, iCUE...). Enciende un dispositivo y pasa a Windows: al momento si está abierto, o en cuanto lo abras. Apágalo y vuelve a Linux. Mientras esté en Windows, Linux no lo tiene."
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -93,6 +94,17 @@ Column {
     width: parent.width
   }
 
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active && root.status.vmRunning === true && root.status.liveReady !== true
+    text: "Windows se abrió antes de preparar esto: ciérralo y ábrelo una vez para poder pasarle dispositivos."
+    color: Commons.Color.urgent
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    wrapMode: Text.Wrap
+    width: parent.width
+  }
+
   Repeater {
     model: root.rows
 
@@ -105,61 +117,6 @@ Column {
       foreground: root.fg
       opacity: root.active ? 1 : 0.6
       onClicked: root.run(["usb-windows", modelData.selected ? "remove" : "add", modelData.id])
-    }
-  }
-
-  // While Windows runs: hand each device back and forth without closing it.
-  Text {
-    textFormat: Text.PlainText
-    visible: root.active && root.status.vmRunning === true && (root.status.devices || []).length > 0
-    text: "Windows está abierto"
-    color: Qt.darker(root.fg, 1.4)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.caption
-    font.bold: true
-    topPadding: Style.space(4)
-  }
-
-  Text {
-    textFormat: Text.PlainText
-    visible: root.active && root.status.vmRunning === true && root.status.liveReady !== true
-    text: "Windows se abrió antes de preparar esto: ciérralo y ábrelo una vez para poder pasarle dispositivos."
-    color: Qt.darker(root.fg, 1.5)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    wrapMode: Text.Wrap
-    width: parent.width
-  }
-
-  Repeater {
-    model: root.active && root.status.liveReady === true ? (root.status.devices || []) : []
-
-    Item {
-      required property var modelData
-      width: root.width
-      implicitHeight: moveButton.implicitHeight
-
-      Text {
-        textFormat: Text.PlainText
-        text: modelData.name + (modelData.inWindows ? "  ·  en Windows" : "  ·  en Linux")
-        color: root.fg
-        font.family: Style.font.family
-        font.pixelSize: Style.font.bodySmall
-        elide: Text.ElideRight
-        anchors.left: parent.left
-        anchors.right: moveButton.left
-        anchors.rightMargin: Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Button {
-        id: moveButton
-        text: modelData.inWindows ? "Devolver a Linux" : "Pasar a Windows"
-        bordered: true
-        foreground: root.fg
-        anchors.right: parent.right
-        onClicked: root.run(["usb-windows", "move", modelData.inWindows ? "linux" : "windows", modelData.id])
-      }
     }
   }
 }

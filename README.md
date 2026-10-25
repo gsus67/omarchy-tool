@@ -67,33 +67,31 @@ instalar en ellas.
 
 ### Periféricos en Windows
 
-Pasa los dispositivos USB que marques a la VM de Windows de Omarchy cuando tú
-quieras, para usar apps que solo existen en Windows (por ejemplo **Glorious
-CORE** con un ratón Glorious Model O 2). Windows los ve como si estuvieran
-enchufados a él; **mientras estén en Windows, Linux no los tiene** (un USB solo
-puede estar en un sistema a la vez). Máximo 4 dispositivos.
+Pasa dispositivos USB a la VM de Windows de Omarchy para usar apps que solo
+existen en Windows (por ejemplo **Glorious CORE** con un ratón Glorious Model
+O 2). Windows los ve como si estuvieran enchufados a él; **mientras estén en
+Windows, Linux no los tiene** (un USB solo puede estar en un sistema a la vez).
+Máximo 4 dispositivos.
 
-Con el interruptor encendido, la VM recibe acceso a los USB (`/dev/bus/usb` en
-`devices`, como documenta `dockurr/windows`), escrito por el mismo
-`bin/compose-edit.sh` que los discos en una sola llamada con `pkexec`. Se nota
-la próxima vez que abras Windows; los dispositivos siguen en Linux hasta que
-los pases. Al apagarlo, la configuración vuelve a quedar como estaba.
+- **El interruptor de la función** prepara Windows: la VM recibe acceso a los
+  USB (`/dev/bus/usb` en `devices`, como documenta `dockurr/windows`), escrito
+  por el mismo `bin/compose-edit.sh` que los discos con `pkexec`. Se nota la
+  próxima vez que abras Windows.
+- **El interruptor de cada dispositivo** significa "en Windows": con Windows
+  abierto pasa al momento, y si no, en cuanto lo abras (el panel lo vigila con
+  `bin/usb-watch.sh`). Apagado, vuelve a Linux al momento. Usa el monitor de
+  QEMU de la VM (`bin/usb-live.sh`, con `pkexec`).
+- **Sin ratón:** **SUPER + ALT + U** devuelve todo a Linux y apaga esos
+  interruptores, aunque la ventana de Windows tenga el teclado (atajo con
+  `dont_inhibit`, en `~/.config/hypr/omarchy-tool.lua`, que `hyprland.lua` carga
+  con una línea protegida). Dentro de Windows, **Shared › Omarchy Tool ›
+  Periféricos › Devolver periféricos a Linux** hace lo mismo. Al pasar algo a
+  Windows, una notificación te recuerda las dos formas.
 
-**Sin ratón:** con la función encendida, **SUPER + ALT + U** devuelve a Linux
-todo lo que esté en Windows con una sola contraseña, aunque la ventana de
-Windows tenga el teclado (atajo con `dont_inhibit`). Si se te olvida el atajo,
-dentro de Windows abre **Shared › Omarchy Tool › Periféricos › Devolver
-periféricos a Linux**: deja una nota en la carpeta compartida y el panel, que
-la vigila cada 2 segundos, hace lo mismo. Al pasar algo a Windows, una
-notificación te recuerda las dos formas. El atajo vive en
-`~/.config/hypr/omarchy-tool.lua`, que `hyprland.lua` carga con una línea
-protegida; al apagar la función o quitar el plugin se borran los dos.
-
-Con Windows abierto, la página muestra **Devolver a Linux** / **Pasar a
-Windows** para cada dispositivo: lo cambia al momento, sin cerrar Windows (cerrar
-la ventana apaga la VM y pierdes lo que tengas abierto). Usa el monitor de QEMU
-de la VM (`bin/usb-live.sh`, con `pkexec`). Si no tienes otro ratón, abre el
-panel desde el menú de Omarchy y muévete con el teclado.
+Ojo con el cursor: Omarchy muestra Windows como **sesión remota**; un ratón
+pasado por USB mueve el cursor de la pantalla "física" de la VM, no el de esa
+sesión. Las apps lo detectan (para configurarlo vale), pero para mover el
+cursor en la ventana de Windows hace falta otro ratón o el teclado.
 
 ### Periféricos en navegador
 

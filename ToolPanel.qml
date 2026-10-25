@@ -129,17 +129,29 @@ Panel {
     onTriggered: if (!updateProc.running) updateProc.running = true
   }
 
-  // "Devolver periféricos a Linux", run inside Windows, leaves a request file
-  // in Shared › Omarchy Tool. Check for it every few seconds while the
-  // feature is on; one bar instance is enough to act (the tool serializes).
-  readonly property string usbRequestFile: moduleStatus("usb-windows").requestFile || ""
-  readonly property bool usbWatch: moduleStatus("usb-windows").enabled === true && usbRequestFile !== ""
+  // Periféricos en Windows: every couple of seconds a cheap probe tells
+  // whether Windows is running (QEMU pid) and whether "Devolver periféricos a
+  // Linux" was run inside it. When Windows appears, devices whose switch is on
+  // go over (sync-live); a request gives everything back. Every bar instance
+  // probes, the tool serializes and later runs find nothing left to do.
+  readonly property var usbStatus: moduleStatus("usb-windows")
+  readonly property bool usbWatch: usbStatus.enabled === true && !!usbStatus.watcher
+  property string usbVmPid: ""
 
   Process {
-    id: requestProbe
-    command: ["test", "-e", root.usbRequestFile]
-    onExited: function(exitCode) {
-      if (exitCode === 0) root.run(["usb-windows", "check-request"])
+    id: usbProbe
+    command: ["bash", root.usbStatus.watcher || "", root.usbStatus.requestFile || ""]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var pid = (String(text).match(/pid=(\d*)/) || [])[1] || ""
+        if (/request=1/.test(text)) root.run(["usb-windows", "check-request"])
+        if (pid !== root.usbVmPid) {
+          root.usbVmPid = pid
+          if (pid !== "") root.run(["usb-windows", "sync-live"])
+          else root.refresh()
+        }
+      }
     }
   }
 
@@ -147,7 +159,7 @@ Panel {
     interval: 2000
     repeat: true
     running: root.usbWatch
-    onTriggered: if (!requestProbe.running) requestProbe.running = true
+    onTriggered: if (!usbProbe.running) usbProbe.running = true
   }
 
   Process {

@@ -21,6 +21,8 @@ export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
 export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
 export OMARCHY_TOOL_PRIV=""
+# Never see the real Windows VM: "no VM" unless a test sets a fake pid.
+export OMARCHY_TOOL_VM_PID=""
 export OMARCHY_TOOL_HYPR_DIR="$work/hypr"
 mkdir -p "$OMARCHY_TOOL_HYPR_DIR"
 printf -- '-- user config\nrequire("hypr.bindings")\n' >"$OMARCHY_TOOL_HYPR_DIR/hyprland.lua"
@@ -236,82 +238,78 @@ check "apply without VM succeeds" '"$tool" windows-disks enable'
 mv "$work/compose-away" "$compose"
 rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
 
-# usb-windows: USB devices handed to the Windows VM, in the same compose.
+# usb-windows: the switch prepares the VM (/dev/bus/usb); each device's own
+# switch means "in Windows", applied live while a prepared Windows runs.
 wu() { "$tool" status | jq -r ".modules[\"usb-windows\"]$1"; }
+wui() { wu " | .candidates[] | select(.id == \"$1\") | .inWindows"; }
+fake_bin2="$work/bin2"; mkdir -p "$fake_bin2"
+printf '#!/bin/bash\necho "$*" >>"%s/notify2.log"\n' "$work" >"$fake_bin2/omarchy-notification-send"; chmod +x "$fake_bin2/omarchy-notification-send"
 check "usb-windows starts off" '[[ $(wu .enabled) == false && $(wu .summary) == Desactivado ]]'
 check "unnamed device gets its name from usb.ids" '[[ $(wu ".candidates[] | select(.id == \"8087:0033\") | .name") == "Intel Corp. AX211 Bluetooth" ]]'
 check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 3 ]] && [[ $(wu ".candidates[] | select(.id == \"093a:822a\") | .name") == "GLORIOUS Model O 2 Wireless" ]]'
 "$tool" usb-windows add 093A:822A
-check "adding while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
+check "a device switch while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
 "$tool" usb-windows enable
 check "enable leaves ARGUMENTS alone (nothing taken at boot)" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
 check "enable adds /dev/bus/usb after /dev/net/tun" '[[ $(grep -A1 "/dev/net/tun$" "$compose" | tail -n1) == "      - /dev/bus/usb # omarchy-tool" ]]'
 check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "0 en Windows" ]]'
+check "status tells the panel what to run" '[[ $(wu .watcher) == "$repo/bin/usb-watch.sh" && $(wu .requestFile) == "$usbfolder/.devolver-usb" ]]'
+before=$(md5sum <"$compose")
+"$tool" usb-windows remove 093a:822a
+"$tool" usb-windows add 093a:822a
+check "device switches never touch the compose" '[[ $(md5sum <"$compose") == "$before" ]]'
 
 # Disks and USB live side by side; one change never drops the other.
 "$tool" windows-disks add "$work/disk-a" DiskA
 "$tool" windows-disks enable
 check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "/dev/bus/usb # omarchy-tool" "$compose"'
 check "both modules report applied" '[[ $(wu .applied) == true && $(wd .applied) == true ]]'
-"$tool" usb-windows add 1b1c:2b0d
-check "second usb device keeps one bus line" '[[ $(grep -c "/dev/bus/usb" "$compose") == 1 ]]'
-check "editor still writes boot devices with ids" 'bash "$repo/bin/compose-edit.sh" --usb 093a:822a && grep -q "driftfix=slew -device usb-host,id=omt093a822a,vendorid=0x093a,productid=0x822a\"" "$compose" && "$tool" apply'
 "$tool" usb-windows disable
-check "usb off keeps the disks" 'grep -q ":/shared2\"$" "$compose" && ! grep -q "usb-host\|/dev/bus/usb" "$compose"'
-check "ARGUMENTS back to Omarchy's" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
+check "usb off keeps the disks" 'grep -q ":/shared2\"$" "$compose" && ! grep -q "/dev/bus/usb" "$compose"'
 "$tool" usb-windows enable
 "$tool" windows-disks disable
 check "disks off keeps usb" '! grep -q ":/shared2" "$compose" && grep -q "/dev/bus/usb" "$compose"'
-"$tool" usb-windows disable
-check "all off restores the compose" 'cmp -s "$compose" "$work/compose-original" && [[ ! -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]]'
-# Live moves while Windows runs (privileged helper stubbed out with "true").
-check "no VM running: move is refused" 'OMARCHY_TOOL_VM_PID="" ; ! OMARCHY_TOOL_VM_PID= "$tool" usb-windows move linux 093a:822a 2>/dev/null'
-"$tool" usb-windows enable
-export OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_VM_STARTED=$(( $(stat -c %Y "$compose") + 5 ))
-check "VM running: status shows it" '[[ $(wu .vmRunning) == true ]]'
-check "VM started after the change is ready" '[[ $(wu .liveReady) == true ]]'
-check "devices start in Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
-OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
-check "moved to Windows" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == true && $(wu .summary) == "1 en Windows" ]]'
-OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move linux 093a:822a
-check "moved back to Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
-OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
-export OMARCHY_TOOL_VM_PID=5151
-check "VM started before the change is not ready" 'OMARCHY_TOOL_VM_STARTED=1 && [[ $(OMARCHY_TOOL_VM_STARTED=1 wu .liveReady) == false ]]'
-check "a new VM run starts with devices in Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
-check "failed move is reported" '! OMARCHY_TOOL_PRIV="false" "$tool" usb-windows move windows 093a:822a 2>/dev/null'
-check "live helper refuses bad ids" '! bash "$repo/bin/usb-live.sh" attach "093a:822a;x" 2>/dev/null'
-unset OMARCHY_TOOL_VM_PID OMARCHY_TOOL_VM_STARTED
-"$tool" usb-windows disable
-check "editor removes usb-host without id (v0.0.12)" 'sed -i "s|driftfix=slew\"|driftfix=slew -device usb-host,vendorid=0x093a,productid=0x822a\"|" "$compose" && bash "$repo/bin/compose-edit.sh" && cmp -s "$compose" "$work/compose-original"'
-# SUPER+ALT+U: a shortcut that bypasses the Windows window's keyboard grab.
-"$tool" usb-windows enable
-keys="$OMARCHY_TOOL_HYPR_DIR/omarchy-tool.lua"
-check "enable writes the shortcut" 'grep -q "^o.bind(\"SUPER + ALT + U\", \"Devolver periféricos a Linux\", .*usb-windows move linux --all\", { dont_inhibit = true })$" "$keys"'
-check "hyprland.lua loads it once" '"$tool" apply && [[ $(grep -c "omarchy-tool.lua" "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua") == 1 ]]'
-fake_bin2="$work/bin2"; mkdir -p "$fake_bin2"
-printf '#!/bin/bash\necho "$*" >>"%s/notify2.log"\n' "$work" >"$fake_bin2/omarchy-notification-send"; chmod +x "$fake_bin2/omarchy-notification-send"
-check "--all with nothing in Windows just says so" 'OMARCHY_TOOL_VM_PID=777 PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all && grep -q "Nada que devolver" "$work/notify2.log"'
-OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
-OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 1b1c:2b0d
-check "--all gives every device back in one call" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="echo" PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all | grep -q "usb-live.sh detach 093a:822a 1b1c:2b0d$" && grep -q "Periféricos devueltos a Linux" "$work/notify2.log"'
-check "after --all nothing is in Windows" '[[ $(OMARCHY_TOOL_VM_PID=777 wu " | [.devices[] | select(.inWindows)] | length") == 0 ]]'
-"$tool" usb-windows disable
-check "disable removes the shortcut file" '[[ ! -e $keys ]]'
-check "disable leaves hyprland.lua as it was" 'cmp -s "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"'
-check "moving to Windows says how to get it back" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" PATH="$fake_bin2:$PATH" "$tool" usb-windows move windows 093a:822a && grep -q "SUPER + ALT + U" "$work/notify2.log" && OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move linux 093a:822a'
+check "editor still writes boot devices with ids" 'bash "$repo/bin/compose-edit.sh" --usb 093a:822a && touch -d "+3 seconds" "$compose" && grep -q "driftfix=slew -device usb-host,id=omt093a822a,vendorid=0x093a,productid=0x822a\"" "$compose" && "$tool" apply && ! grep -q usb-host "$compose"'
 
-# The Windows-side return file, in its own Periféricos folder.
-"$tool" usb-windows enable
+# Live: Windows running and prepared (privileged helper stubbed with "echo").
+export OMARCHY_TOOL_VM_STARTED=$(( $(stat -c %Y "$compose") + 5 ))
+check "no VM running: sync-live does nothing" 'OMARCHY_TOOL_VM_PID= OMARCHY_TOOL_PRIV=false "$tool" usb-windows sync-live'
+check "VM running and prepared" '[[ $(OMARCHY_TOOL_VM_PID=4242 wu .vmRunning) == true && $(OMARCHY_TOOL_VM_PID=4242 wu .liveReady) == true ]]'
+check "Windows opening: switched-on devices go over" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo PATH="$fake_bin2:$PATH" "$tool" usb-windows sync-live) == *"usb-live.sh attach 093a:822a" ]]'
+check "and say how to get them back" 'grep -q "SUPER + ALT + U" "$work/notify2.log"'
+check "status: in Windows" '[[ $(OMARCHY_TOOL_VM_PID=4242 wui 093a:822a) == true && $(OMARCHY_TOOL_VM_PID=4242 wu .summary) == "1 en Windows" ]]'
+check "sync-live again: nothing to do" '[[ -z $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows sync-live) ]]'
+check "unplugged devices are not attached" '[[ $(OMARCHY_TOOL_VM_PID=4242 "$tool" usb-windows add aaaa:0009 && echo ok) == ok ]] && [[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows sync-live) != *aaaa* ]] && "$tool" usb-windows remove aaaa:0009'
+check "switch off while open: back to Linux at once" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows remove 093a:822a) == *"usb-live.sh detach 093a:822a" ]] && [[ $(OMARCHY_TOOL_VM_PID=4242 wui 093a:822a) == false ]]'
+check "switch on while open: to Windows at once" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows add 093a:822a) == *"usb-live.sh attach 093a:822a" ]]'
+check "a cancelled password is reported and remembered as not moved" '"$tool" usb-windows remove 093a:822a >/dev/null 2>&1; OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=false "$tool" usb-windows remove 093a:822a 2>/dev/null; [[ $(OMARCHY_TOOL_VM_PID=4242 wui 093a:822a) == true ]]'
+OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=true "$tool" usb-windows add 093a:822a
+check "a new VM run starts with devices in Linux" '[[ $(OMARCHY_TOOL_VM_PID=5151 wui 093a:822a) == false ]]'
+check "VM started before preparing is not ready" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_VM_STARTED=1 wu .liveReady) == false ]] && [[ -z $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_VM_STARTED=1 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows sync-live) ]]'
+check "live helper refuses bad ids" '! bash "$repo/bin/usb-live.sh" attach "093a:822a;x" 2>/dev/null'
+
+# SUPER+ALT+U / "Devolver periféricos a Linux": everything back, switches off.
+keys="$OMARCHY_TOOL_HYPR_DIR/omarchy-tool.lua"
+check "the shortcut exists while the feature is on" 'grep -q "^o.bind(\"SUPER + ALT + U\", \"Devolver periféricos a Linux\", .*usb-windows move linux --all\", { dont_inhibit = true })$" "$keys"'
+check "hyprland.lua loads it once" '"$tool" apply && [[ $(grep -c "omarchy-tool.lua" "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua") == 1 ]]'
+OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=true "$tool" usb-windows add 1b1c:2b0d
+check "--all gives every device back in one call" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all) == *"usb-live.sh detach 093a:822a 1b1c:2b0d" ]] && grep -q "Periféricos devueltos a Linux" "$work/notify2.log"'
+check "--all switches those devices off" '[[ $(wu ".devices | length") == 0 && $(OMARCHY_TOOL_VM_PID=4242 wu ".inWindows | length") == 0 ]]'
+check "--all with nothing in Windows just says so" 'OMARCHY_TOOL_VM_PID=4242 PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all && grep -q "Nada que devolver" "$work/notify2.log"'
 check "Windows gets the return file" '[[ -f "$usbfolder/Devolver periféricos a Linux.cmd" ]] && file "$usbfolder/Devolver periféricos a Linux.cmd" | grep -q CRLF'
+OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=true "$tool" usb-windows add 093a:822a
 touch "$usbfolder/.devolver-usb"
-check "a request from Windows gives everything back" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" PATH="$fake_bin2:$PATH" "$tool" usb-windows check-request && [[ ! -e $usbfolder/.devolver-usb ]]'
+check "a request from Windows gives everything back" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows check-request) == *"detach 093a:822a" ]] && [[ ! -e $usbfolder/.devolver-usb && $(wu ".devices | length") == 0 ]]'
 check "no request: check-request does nothing" '"$tool" usb-windows check-request'
-check "status tells the panel where to look" '[[ $(wu .requestFile) == "$usbfolder/.devolver-usb" ]]'
+check "watcher reports pid and request" '[[ $(bash "$repo/bin/usb-watch.sh" "$usbfolder/.devolver-usb") == "pid="*" request=0" ]] && touch "$usbfolder/.devolver-usb" && [[ $(bash "$repo/bin/usb-watch.sh" "$usbfolder/.devolver-usb") == *"request=1" ]] && rm "$usbfolder/.devolver-usb"'
+check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && "$tool" usb-windows add aaaa:0003 && "$tool" usb-windows add aaaa:0004 && ! "$tool" usb-windows add aaaa:0005 2>/dev/null'
 "$tool" usb-windows disable
+unset OMARCHY_TOOL_VM_STARTED
+check "disable removes the shortcut" '[[ ! -e $keys ]] && cmp -s "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"'
 check "disable removes the Periféricos folder" '[[ ! -e $usbfolder ]]'
-check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && ! "$tool" usb-windows add aaaa:0003 2>/dev/null'
+check "all off restores the compose" 'cmp -s "$compose" "$work/compose-original" && [[ ! -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]]'
 check "editor refuses bad usb ids" '! bash "$repo/bin/compose-edit.sh" --usb "1b1c:2b0d,x" 2>/dev/null && cmp -s "$compose" "$work/compose-original"'
+check "editor removes usb-host without id (v0.0.12)" 'sed -i "s|driftfix=slew\"|driftfix=slew -device usb-host,vendorid=0x093a,productid=0x822a\"|" "$compose" && bash "$repo/bin/compose-edit.sh" && cmp -s "$compose" "$work/compose-original"'
 
 # Upgrade from v0.0.7-v0.0.10: their record moves into compose.applied.
 "$tool" windows-disks enable

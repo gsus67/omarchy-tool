@@ -1,17 +1,21 @@
 # shellcheck shell=bash
 # Module: usb-windows
 #
-# Lets chosen USB devices be handed to Omarchy's Windows VM, so their
-# Windows-only apps (Glorious CORE, iCUE, ...) can see them. Switched on, the
-# VM gets /dev/bus/usb (compose_sync in bin/omarchy-tool writes it through
-# bin/compose-edit.sh under pkexec; it takes effect when Windows next starts),
-# but every device stays in Linux until the user moves it.
+# Hands chosen USB devices to Omarchy's Windows VM, so their Windows-only apps
+# (Glorious CORE, iCUE, ...) can see them.
 #
-# While Windows runs, `move linux|windows <id>` hands a device over to Windows
-# or back to Linux on the spot (bin/usb-live.sh through the QEMU monitor),
-# so nothing in Windows has to be closed. $STATE_DIR/usb-live.state remembers
-# those moves for the current VM run: its first line is the QEMU pid, then
-# "+id" (moved to Windows) or "-id" (moved back to Linux).
+# The module switch prepares the VM: it gets /dev/bus/usb (compose_sync in
+# bin/omarchy-tool writes it through bin/compose-edit.sh under pkexec; it
+# takes effect when Windows next starts). Each device's own switch then means
+# "this one in Windows": while a prepared Windows runs, switching it on hands
+# it over on the spot and off gives it back (bin/usb-live.sh through the QEMU
+# monitor), nothing has to be closed. Devices left on go over by themselves
+# when Windows opens: the panel polls bin/usb-watch.sh and runs sync-live
+# when the VM appears. SUPER+ALT+U, or "Devolver periféricos a Linux" inside
+# Windows, gives everything back and switches those devices off.
+#
+# $STATE_DIR/usb-live.state remembers moves for the current VM run: its first
+# line is the QEMU pid, then "+id" (moved to Windows) or "-id" (moved back).
 
 USB_WINDOWS_SYS="${OMARCHY_TOOL_USB_SYS:-/sys/bus/usb/devices}"
 USB_WINDOWS_MAX=4
@@ -53,13 +57,14 @@ usb_windows_connected_json() {
   jq -cs 'unique_by(.id)' <<<"$rows"
 }
 
-usb_windows_desired() {
+# Devices whose switch is on (wanted in Windows), while the feature is on.
+usb_windows_wanted() {
   usb_windows_enabled || return 0
   config_get -r '.modules["usb-windows"].devices // [] | .[] | .id' | head -n "$USB_WINDOWS_MAX"
 }
 
 usb_windows_compose_args() {
-  [[ -n $(usb_windows_desired) ]] && echo "--usb-bus on"
+  usb_windows_enabled && echo "--usb-bus on"
   return 0
 }
 
@@ -71,13 +76,13 @@ usb_windows_apply() {
   usb_windows_sync_windows_folder
 }
 
-# "Devolver periféricos a Linux" in Shared › Omarchy Tool › Periféricos: run inside Windows,
-# it leaves .devolver-usb there, and the panel (polling check-request) gives
-# everything back, for when SUPER+ALT+U is forgotten. The folder is shared
-# with other modules: only our files come and go.
+# "Devolver periféricos a Linux" in Shared › Omarchy Tool › Periféricos: run
+# inside Windows, it leaves .devolver-usb there, and the panel (polling
+# usb-watch.sh) runs check-request, for when SUPER+ALT+U is forgotten. The
+# folder is shared with other modules: only our files come and go.
 usb_windows_sync_windows_folder() {
   local folder=$USB_WINDOWS_FOLDER
-  if [[ -n $(usb_windows_desired) && -f $COMPOSE_FILE && -d $USB_WINDOWS_SHARED ]]; then
+  if usb_windows_enabled && [[ -f $COMPOSE_FILE && -d $USB_WINDOWS_SHARED ]]; then
     mkdir -p -- "$folder"
     cp -f -- "$TOOL_DIR/windows/$USB_WINDOWS_RETURN_CMD" "$folder/"
   elif [[ -d $folder ]]; then
@@ -98,7 +103,7 @@ usb_windows_check_request() {
 # SUPER+ALT+U gives everything in Windows back to Linux, with no mouse needed.
 # dont_inhibit: it works even while the Windows window holds the keyboard.
 usb_windows_hotkeys() {
-  [[ -n $(usb_windows_desired) ]] || return 0
+  usb_windows_enabled || return 0
   printf 'o.bind("SUPER + ALT + U", "Devolver periféricos a Linux", %s, { dont_inhibit = true })\n' \
     "$(jq -Rn --arg cmd "$(printf '%q' "$TOOL_DIR/bin/omarchy-tool") usb-windows move linux --all" '$cmd')"
 }
@@ -119,6 +124,13 @@ usb_windows_vm_started() {
     return
   fi
   date -d "$(ps -o lstart= -p "$pid")" +%s 2>/dev/null || echo 0
+}
+
+# Whether this VM run started with /dev/bus/usb, so devices can be handed over.
+usb_windows_live_ready() {
+  local pid=$1
+  [[ -n $pid ]] && grep -qx -- "--usb-bus on" <<<"$(compose_applied)" &&
+    (($(usb_windows_vm_started "$pid") >= $(compose_mtime)))
 }
 
 usb_windows_live_state() {
@@ -143,49 +155,89 @@ usb_windows_notify() {
   omarchy-notification-send -g "󰦬" "$@" >/dev/null 2>&1 || true
 }
 
-# move linux|windows <vvvv:pppp>, or move linux --all (the SUPER+ALT+U shortcut)
+# Hand <ids> to Windows (attach) or back to Linux (detach) in one pkexec call,
+# and remember it for this VM run.
+usb_windows_live() {
+  local action=$1 pid=$2 state id
+  shift 2
+  (($#)) || return 0
+  mkdir -p -- "$STATE_DIR"
+  install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
+  privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "$@" || return 1
+  state=$(usb_windows_live_state)
+  [[ -f $state && $(head -n1 "$state") == "$pid" ]] || echo "$pid" >"$state"
+  for id in "$@"; do
+    if [[ $action == attach ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
+  done
+  if [[ $action == attach ]]; then
+    # Say how to get it back right when it is gone: the mouse may be the one.
+    usb_windows_notify -t 15000 "Ahora en Windows" \
+      "Para devolverlo a Linux: SUPER + ALT + U, o en Windows abre Shared › Omarchy Tool › Periféricos › Devolver periféricos a Linux."
+  fi
+}
+
+# sync-live: make a running, prepared Windows hold exactly the devices whose
+# switch is on (and that are plugged in). The panel runs it when Windows opens
+# and after every switch change.
+usb_windows_sync_live() {
+  local pid id attach=() detach=() connected
+  pid=$(usb_windows_vm_pid)
+  usb_windows_live_ready "$pid" || return 0
+  connected=$(usb_windows_connected_json)
+  while IFS= read -r id; do
+    [[ -n $id ]] || continue
+    jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$connected" >/dev/null || continue
+    usb_windows_in_windows "$id" "$pid" || attach+=("$id")
+  done < <(usb_windows_wanted)
+  while IFS= read -r id; do
+    [[ -n $id ]] || continue
+    grep -qxF -- "$id" <<<"$(usb_windows_wanted)" && continue
+    usb_windows_in_windows "$id" "$pid" && detach+=("$id")
+  done < <(usb_windows_known_ids)
+  usb_windows_live detach "$pid" "${detach[@]}" || fail "no se pudo devolver el dispositivo a Linux"
+  usb_windows_live attach "$pid" "${attach[@]}" || fail "no se pudo pasar el dispositivo a Windows"
+}
+
+# Every device this VM run may hold: saved ones plus any moved during it.
+usb_windows_known_ids() {
+  local state
+  state=$(usb_windows_live_state)
+  {
+    config_get -r '.modules["usb-windows"].devices // [] | .[] | .id'
+    [[ -f $state ]] && tail -n +2 "$state" | sed 's/^[+-]//'
+  } | sort -u
+}
+
+# move linux --all (SUPER+ALT+U, "Devolver periféricos a Linux"): give back
+# everything and switch those devices off, so it doesn't go over again.
+# move linux|windows <vvvv:pppp>: one device, switch included.
 usb_windows_move() {
-  local where=${1:-} arg=${2:-} pid state action id ids=()
+  local where=${1:-} arg=${2:-} pid id ids=()
   [[ $where == linux || $where == windows ]] || fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>|--all"
   pid=$(usb_windows_vm_pid)
 
   if [[ $arg == --all && $where == linux ]]; then
+    config_update '.modules["usb-windows"].devices = []'
     if [[ -n $pid ]]; then
       while IFS= read -r id; do
         [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && ids+=("$id")
-      done < <(config_get -r '.modules["usb-windows"].devices // [] | .[] | .id')
+      done < <(usb_windows_known_ids)
     fi
     if ((${#ids[@]} == 0)); then
       usb_windows_notify "Nada que devolver" "No hay periféricos en Windows."
       return 0
     fi
-  else
-    id=${arg,,}
-    usb_windows_valid_id "$id" || fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>|--all"
-    [[ -n $pid ]] || fail "Windows no está abierto"
-    ids=("$id")
+    if ! usb_windows_live detach "$pid" "${ids[@]}"; then
+      usb_windows_notify -u critical "No se pudieron devolver los periféricos" "Prueba otra vez o cierra Windows."
+      fail "no se pudo devolver los dispositivos"
+    fi
+    usb_windows_notify "Periféricos devueltos a Linux" "${#ids[@]} dispositivo(s) de vuelta; su interruptor queda apagado."
+    return 0
   fi
 
-  action=attach
-  [[ $where == linux ]] && action=detach
-  mkdir -p -- "$STATE_DIR"
-  install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
-  if ! privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "${ids[@]}"; then
-    [[ $arg == --all ]] && usb_windows_notify -u critical "No se pudieron devolver los periféricos" "Prueba otra vez o cierra Windows."
-    fail "no se pudo mover el dispositivo"
-  fi
-  state=$(usb_windows_live_state)
-  [[ -f $state && $(head -n1 "$state") == "$pid" ]] || echo "$pid" >"$state"
-  for id in "${ids[@]}"; do
-    if [[ $where == windows ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
-  done
-  [[ $arg == --all ]] && usb_windows_notify "Periféricos devueltos a Linux" "${#ids[@]} dispositivo(s) de vuelta."
-  # Say how to get it back right when it is gone: the mouse may be the one.
-  if [[ $where == windows ]]; then
-    usb_windows_notify -t 15000 "Ahora está en Windows" \
-      "Para devolverlo a Linux: SUPER + ALT + U, o en Windows abre Shared › Omarchy Tool › Periféricos › Devolver periféricos a Linux."
-  fi
-  return 0
+  id=${arg,,}
+  usb_windows_valid_id "$id" || fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>|--all"
+  if [[ $where == windows ]]; then usb_windows_add "$id"; else usb_windows_remove "$id"; fi
 }
 
 usb_windows_status() {
@@ -193,12 +245,10 @@ usb_windows_status() {
   usb_windows_enabled && enabled=true
   pid=$(usb_windows_vm_pid)
   if [[ -n $pid ]]; then
-    # This VM run started with /dev/bus/usb, so devices can be handed over.
-    grep -qx -- "--usb-bus on" <<<"$(compose_applied)" &&
-      (($(usb_windows_vm_started "$pid") >= $(compose_mtime))) && ready=true
+    usb_windows_live_ready "$pid" && ready=true
     while IFS= read -r id; do
       [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && inwin=$(jq -c --arg id "$id" '. + [$id]' <<<"$inwin")
-    done < <(config_get -r '.modules["usb-windows"].devices // [] | .[] | .id')
+    done < <(usb_windows_known_ids)
   fi
   [[ -f $COMPOSE_FILE ]] && installed=true
   compose_in_sync --usb-bus && applied=true
@@ -207,11 +257,11 @@ usb_windows_status() {
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson connected "$connected" --argjson devices "$devices" --argjson max "$USB_WINDOWS_MAX" \
     --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" --argjson ready "$ready" \
-    --arg request "$USB_WINDOWS_FOLDER/.devolver-usb" \
+    --arg request "$USB_WINDOWS_FOLDER/.devolver-usb" --arg watch "$TOOL_DIR/bin/usb-watch.sh" \
     '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running, liveReady: $ready,
-      requestFile: $request,
+      requestFile: $request, watcher: $watch, inWindows: $inwin,
       devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id), inWindows: any($inwin[]; . == $d.id)}],
-      candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id)}],
+      candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id), inWindows: any($inwin[]; . == $c.id)}],
       summary: (if ($installed | not) then "Windows no está instalado"
         elif $enabled then ($inwin | length | tostring) + " en Windows" else "Desactivado" end)}'
 }
@@ -219,14 +269,27 @@ usb_windows_status() {
 usb_windows_enable() {
   config_update '.modules["usb-windows"].enabled = true'
   usb_windows_apply
+  usb_windows_sync_live
 }
 
+# Off: everything goes back to Linux first, then the VM loses USB access.
 usb_windows_disable() {
   config_update '.modules["usb-windows"].enabled = false'
+  usb_windows_sync_live_off
   usb_windows_apply
 }
 
-# add <vvvv:pppp> [name]
+usb_windows_sync_live_off() {
+  local pid id ids=()
+  pid=$(usb_windows_vm_pid)
+  [[ -n $pid ]] || return 0
+  while IFS= read -r id; do
+    [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && ids+=("$id")
+  done < <(usb_windows_known_ids)
+  usb_windows_live detach "$pid" "${ids[@]}" || fail "no se pudo devolver los dispositivos a Linux"
+}
+
+# add <vvvv:pppp> [name]: switch a device on (to Windows now, if it is open).
 usb_windows_add() {
   local id=${1:-} name=${2:-} count
   id=${id,,}
@@ -241,14 +304,14 @@ usb_windows_add() {
       if any(.[]; .id == $id) then map(if .id == $id then .name = $name else . end)
       else . + [{id: $id, name: $name}] end)' \
     --arg id "$id" --arg name "$name"
-  usb_windows_apply
+  usb_windows_sync_live
 }
 
-# remove <vvvv:pppp>
+# remove <vvvv:pppp>: switch a device off (back to Linux now, if in Windows).
 usb_windows_remove() {
   local id=${1:-}
   id=${id,,}
   usb_windows_valid_id "$id" || fail "usage: omarchy-tool usb-windows remove <vvvv:pppp>"
   config_update '.modules["usb-windows"].devices |= (. // [] | map(select(.id != $id)))' --arg id "$id"
-  usb_windows_apply
+  usb_windows_sync_live
 }
