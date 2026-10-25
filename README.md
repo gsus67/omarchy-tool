@@ -65,6 +65,23 @@ las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
 Al ser carpetas de red, algunos instaladores muy estrictos pueden negarse a
 instalar en ellas.
 
+### Periféricos
+
+Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
+configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el
+dispositivo pero al darle a conectar no pasa nada, porque en Linux esos
+dispositivos solo los puede usar root.
+
+El plugin escribe una regla en `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+(con `bin/udev-webhid.sh` vía `pkexec`, así que pide tu contraseña) que da
+acceso solo a la sesión con la que has entrado. Al desmarcar un dispositivo,
+desactivar la función o quitar el plugin, la regla se borra y el acceso ya dado
+se retira al momento.
+
+Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
+dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
+vayas a configurar y desmárcalo al terminar si quieres.
+
 ## Línea de comandos
 
 El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
@@ -77,6 +94,9 @@ omarchy-tool windows-disks enable|disable
 omarchy-tool windows-disks add /mnt/datos [Nombre]
 omarchy-tool windows-disks remove /mnt/datos
 omarchy-tool windows-disks letter /mnt/datos X   # o "next"
+omarchy-tool web-devices enable|disable
+omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
+omarchy-tool web-devices remove 1b1c:2b0d
 ```
 
 ## Añadir un módulo

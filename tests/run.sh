@@ -22,6 +22,16 @@ export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
 export OMARCHY_TOOL_PRIV=""
 export OMARCHY_TOOL_WINDOWS_SHARED="$work/Windows"
+export OMARCHY_TOOL_UDEV_RULES="$work/70-omarchy-tool-webhid.rules"
+export OMARCHY_TOOL_HIDRAW_SYS="$work/sys"
+fake_hid() {
+  mkdir -p "$OMARCHY_TOOL_HIDRAW_SYS/$1/device"
+  printf 'HID_ID=%s\nHID_NAME=%s\n' "$2" "$3" >"$OMARCHY_TOOL_HIDRAW_SYS/$1/device/uevent"
+}
+fake_hid hidraw5 0003:00001B1C:00002B0D "Corsair CORSAIR VANGUARD 96 Keyboard"
+fake_hid hidraw6 0003:00001B1C:00002B0D "Corsair CORSAIR VANGUARD 96 Keyboard"
+fake_hid hidraw2 0003:0000093A:0000822A "GLORIOUS Model O 2 Wireless"
+fake_hid hidraw9 0005:0000046D:0000B023 "Bluetooth thing"
 winfolder="$OMARCHY_TOOL_WINDOWS_SHARED/Omarchy Tool"
 mkdir -p "$OMARCHY_TOOL_WINDOWS_SHARED"
 mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/disk-c"
@@ -186,6 +196,31 @@ mv "$compose" "$work/compose-away"
 check "status reports no VM" '[[ $(wd .vmInstalled) == false && $(wd .summary) == "Windows no está instalado" ]]'
 check "apply without VM succeeds" '"$tool" windows-disks enable'
 mv "$work/compose-away" "$compose"
+rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
+
+# web-devices: browser (WebHID) access to chosen USB devices via a udev rule.
+wv() { "$tool" status | jq -r ".modules[\"web-devices\"]$1"; }
+check "web-devices starts off" '[[ $(wv .enabled) == false && $(wv .summary) == Desactivado ]]'
+check "lists connected USB devices once each" '[[ $(wv ".candidates | length") == 2 ]] && [[ $(wv ".candidates[] | select(.id == \"1b1c:2b0d\") | .name") == "Corsair CORSAIR VANGUARD 96 Keyboard" ]]'
+check "bluetooth HID is not listed" '[[ $(wv " | [.candidates[] | select(.id == \"046d:b023\")] | length") == 0 ]]'
+"$tool" web-devices add 1B1C:2B0D
+check "adding while off writes no rule" '[[ ! -e $OMARCHY_TOOL_UDEV_RULES ]] && [[ $(wv ".devices[0].name") == "Corsair CORSAIR VANGUARD 96 Keyboard" ]]'
+"$tool" web-devices enable
+check "enable writes a uaccess rule" 'grep -qxF "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"1b1c\", ATTRS{idProduct}==\"2b0d\", TAG+=\"uaccess\"" "$OMARCHY_TOOL_UDEV_RULES"'
+check "status reports applied" '[[ $(wv .applied) == true && $(wv ".devices[0].connected") == true && $(wv .summary) == "1 con acceso" ]]'
+"$tool" web-devices add 093a:822a
+check "second device gets its own line" '[[ $(grep -c uaccess "$OMARCHY_TOOL_UDEV_RULES") == 2 ]]'
+before=$(md5sum <"$OMARCHY_TOOL_UDEV_RULES")
+OMARCHY_TOOL_PRIV="false" "$tool" apply
+check "apply leaves an up-to-date rule alone" '[[ $(md5sum <"$OMARCHY_TOOL_UDEV_RULES") == "$before" ]]'
+check "bad ids are refused" '! "$tool" web-devices add "1b1c:2b0d\"" 2>/dev/null && ! bash "$repo/bin/udev-webhid.sh" "../x" 2>/dev/null'
+"$tool" web-devices remove 093a:822a
+check "remove drops its line" '[[ $(grep -c uaccess "$OMARCHY_TOOL_UDEV_RULES") == 1 ]]'
+"$tool" web-devices disable
+check "disable deletes the rule file" '[[ ! -e $OMARCHY_TOOL_UDEV_RULES ]] && [[ $(wv ".devices | length") == 1 ]]'
+"$tool" web-devices enable
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
+check "uninstall deletes the rule file" '[[ ! -e $OMARCHY_TOOL_UDEV_RULES ]]'
 rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
 
 # self-update from an install under Omarchy's plugin folder: a newer commit

@@ -29,6 +29,16 @@ if [[ -f $state_dir/windows-disks.applied && -f $state_dir/compose-shares.sh ]];
   fi
 fi
 
+# Browser access to peripherals: the udev rule is root's; one more password.
+webhid_rules="${OMARCHY_TOOL_UDEV_RULES:-/etc/udev/rules.d/70-omarchy-tool-webhid.rules}"
+if [[ -f $webhid_rules && -f $state_dir/udev-webhid.sh ]]; then
+  if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$state_dir/udev-webhid.sh" || true
+  else
+    pkexec /usr/bin/bash "$state_dir/udev-webhid.sh" || true
+  fi
+fi
+
 # ~/Windows/Omarchy Tool: keep only "Quitar discos" while Windows still has
 # letters from "Activar discos" (it deletes the folder once run); else drop it.
 windows_folder="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}/Omarchy Tool"

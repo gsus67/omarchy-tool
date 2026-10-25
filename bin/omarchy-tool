@@ -60,6 +60,16 @@ config_update() {
   mv -f -- "$tmp" "$CONFIG_FILE"
 }
 
+# Run a command as root: pkexec, which shows Omarchy's password dialog. Tests
+# set OMARCHY_TOOL_PRIV ("" runs it directly, "false" simulates a refusal).
+privileged() {
+  if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} "$@"
+  else
+    pkexec "$@"
+  fi
+}
+
 # --- modules -----------------------------------------------------------------
 
 module_names() {
@@ -185,7 +195,7 @@ main() {
       ;;
     *)
       local action=${1:-} fn
-      module_names | grep -qxF -- "$command" || fail "unknown command or module: $command"
+      grep -qxF -- "$command" <<<"$(module_names)" || fail "unknown command or module: $command"
       [[ -n $action ]] || fail "missing action for module $command"
       shift
       fn=$(module_fn "$command" "$action")

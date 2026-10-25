@@ -137,16 +137,8 @@ windows_disks_record_matches() {
   [[ $(tail -n +2 "$record") == "$desired" ]]
 }
 
-windows_disks_privileged() {
-  if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
-    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} "$@"
-  else
-    pkexec "$@"
-  fi
-}
-
 windows_disks_write_compose() {
-  windows_disks_privileged /usr/bin/bash "$STATE_DIR/compose-shares.sh" "$@"
+  privileged /usr/bin/bash "$STATE_DIR/compose-shares.sh" "$@"
 }
 
 # v0.0.1-v0.0.6 shared disks over RDP through a launcher in windows-vm.desktop.

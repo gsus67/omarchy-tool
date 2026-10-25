@@ -20,7 +20,8 @@ Panel {
   ipcTarget: "omarchy-tool"
 
   readonly property var modules: [
-    { id: "windows-disks", title: "Windows", source: "modules/WindowsDisks.qml" }
+    { id: "windows-disks", title: "Windows", source: "modules/WindowsDisks.qml" },
+    { id: "web-devices", title: "Periféricos", source: "modules/WebDevices.qml" }
   ]
 
   readonly property string toolPath: decodeURIComponent(String(Qt.resolvedUrl("bin/omarchy-tool")).replace(/^file:\/\//, ""))
