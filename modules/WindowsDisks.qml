@@ -71,7 +71,7 @@ Column {
   Text {
     textFormat: Text.PlainText
     text: root.vmInstalled
-      ? "Marca hasta 2 discos. En Windows salen en \\\\host.lan, como la carpeta Shared, y les puedes poner letra con \"Conectar unidad de red\". Los cambios se ven al volver a abrir Windows y piden tu contraseña."
+      ? "Marca hasta 2 discos. En Windows salen en \\\\host.lan, junto a la carpeta Shared. Los cambios piden tu contraseña y se ven al volver a abrir Windows."
       : "Instala Windows desde el menú de Omarchy para usar esto."
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
@@ -140,5 +140,63 @@ Column {
       anchors.verticalCenter: pathField.verticalCenter
       onClicked: root.addPath()
     }
+  }
+
+  // Drive letters: picked here, set inside Windows by "Activar discos".
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active && (root.status.disks || []).length > 0
+    text: "Letras en Windows"
+    color: Qt.darker(root.fg, 1.4)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.bold: true
+    topPadding: Style.space(4)
+  }
+
+  Repeater {
+    model: root.active ? (root.status.disks || []) : []
+
+    Item {
+      required property var modelData
+      width: root.width
+      implicitHeight: letterButton.implicitHeight
+
+      Text {
+        textFormat: Text.PlainText
+        text: modelData.name + "  ·  " + modelData.share
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+        anchors.left: parent.left
+        anchors.right: letterButton.left
+        anchors.rightMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Button {
+        id: letterButton
+        text: modelData.letter + ":"
+        tooltipText: "Cambiar letra"
+        bordered: true
+        foreground: root.fg
+        anchors.right: parent.right
+        onClicked: root.run(["windows-disks", "letter", modelData.path, "next"])
+      }
+    }
+  }
+
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active && (root.status.disks || []).length > 0
+    text: root.status.lettersSet
+      ? "Si cambias letras o discos, vuelve a abrir \"Activar discos\" en Windows."
+      : "Para que salgan con su letra, abre una vez en Windows: escritorio › Shared › Omarchy Tool › Activar discos."
+    color: Qt.darker(root.fg, 1.5)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    wrapMode: Text.Wrap
+    width: parent.width
   }
 }

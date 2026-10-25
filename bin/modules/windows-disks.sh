@@ -8,6 +8,11 @@
 # Omarchy's root-owned compose through bin/compose-shares.sh under pkexec.
 # Changes reach Windows the next time the VM starts.
 #
+# Drive letters: Windows only maps \\host.lan\Data to Z: once, at install. For
+# ours the module drops "Omarchy Tool" into that same Shared folder (~/Windows)
+# with "Activar discos" (the same `net use ... /persistent:yes` plus a desktop
+# shortcut) and "Quitar discos", which the user runs once inside Windows.
+#
 # The last applied folders and the compose mtime are kept in
 # $STATE_DIR/windows-disks.applied, so apply only asks for the password when
 # something changed (including Omarchy rewriting the compose on reinstall).
@@ -15,6 +20,8 @@
 WINDOWS_DISKS_COMPOSE="${OMARCHY_TOOL_COMPOSE:-/var/lib/omarchy/windows/docker-compose.yml}"
 WINDOWS_DISKS_DESKTOP="${OMARCHY_TOOL_APPLICATIONS_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/applications}/windows-vm.desktop"
 WINDOWS_DISKS_MAX=2
+WINDOWS_DISKS_SHARED="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}"
+WINDOWS_DISKS_LETTERS="XYWVUTSRQPONMLKJIHGFED"
 
 windows_disks_enabled() {
   [[ $(config_get '.modules["windows-disks"].enabled // false') == true ]]
@@ -74,6 +81,44 @@ windows_disks_desired() {
   config_get -r '.modules["windows-disks"].disks // [] | .[] | .path' | head -n "$WINDOWS_DISKS_MAX"
 }
 
+# Free letter for a new disk: the first of X, Y, W, ... not taken by another
+# saved disk (Z: is Omarchy's own Shared).
+windows_disks_free_letter() {
+  local taken i letter
+  taken=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path != $path) | .letter // empty' --arg path "${1:-}")
+  for ((i = 0; i < ${#WINDOWS_DISKS_LETTERS}; i++)); do
+    letter=${WINDOWS_DISKS_LETTERS:i:1}
+    grep -qxF -- "$letter" <<<"$taken" || { echo "$letter"; return; }
+  done
+  return 1
+}
+
+# Keep ~/Windows/Omarchy Tool in step: the scripts plus discos.txt while disks
+# are shared. Otherwise only what Windows needs to undo letters it was given
+# (.letras-puestas, written by Activar), or nothing at all.
+windows_disks_sync_windows_folder() {
+  local folder="$WINDOWS_DISKS_SHARED/Omarchy Tool" index=2 letter name path
+  if [[ $(windows_disks_desired) != "" && -f $WINDOWS_DISKS_COMPOSE && -d $WINDOWS_DISKS_SHARED ]]; then
+    mkdir -p -- "$folder"
+    cp -f -- "$TOOL_DIR/windows/omarchy-tool.ps1" "$TOOL_DIR/windows/Activar discos.cmd" \
+      "$TOOL_DIR/windows/Quitar discos.cmd" "$folder/"
+    : >"$folder/discos.txt"
+    while IFS= read -r -d '' letter && IFS= read -r -d '' name && IFS= read -r -d '' path; do
+      printf '%s|\\\\host.lan\\Data%s|%s\r\n' "$letter" "$index" "$name" >>"$folder/discos.txt"
+      index=$((index + 1))
+    done < <(config_get -j '.modules["windows-disks"].disks // [] | .[:2][] | (.letter // "X") + "\u0000" + .name + "\u0000" + .path + "\u0000"')
+    : >"$folder/.plugin-activo"
+  elif [[ -d $folder ]]; then
+    windows_disks_retire_windows_folder "$folder"
+  fi
+}
+
+windows_disks_retire_windows_folder() {
+  local folder=$1
+  rm -f -- "$folder/.plugin-activo" "$folder/Activar discos.cmd" "$folder/discos.txt"
+  [[ -e $folder/.letras-puestas ]] || rm -rf -- "$folder"
+}
+
 windows_disks_compose_mtime() {
   stat -c %Y -- "$WINDOWS_DISKS_COMPOSE" 2>/dev/null || echo 0
 }
@@ -120,10 +165,21 @@ windows_disks_cleanup_rdp() {
   rm -f -- "$launcher" "$saved"
 }
 
+# Disks saved before letters existed (v0.0.7-v0.0.8) get a free one each.
+windows_disks_fill_letters() {
+  local path letter
+  while IFS= read -r path; do
+    letter=$(windows_disks_free_letter "$path") || return 0
+    config_update '.modules["windows-disks"].disks |= map(if .path == $path then .letter = $letter else . end)' \
+      --arg path "$path" --arg letter "$letter"
+  done < <(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.letter == null) | .path')
+}
+
 windows_disks_apply() {
   local record folders=()
   record=$(windows_disks_record)
   windows_disks_cleanup_rdp
+  windows_disks_fill_letters
 
   mkdir -p -- "$STATE_DIR"
   install -m 0644 -- "$TOOL_DIR/bin/compose-shares.sh" "$STATE_DIR/compose-shares.sh"
@@ -131,10 +187,14 @@ windows_disks_apply() {
   # No VM: nothing to share with, and nothing of ours can be in a compose.
   if [[ ! -f $WINDOWS_DISKS_COMPOSE ]]; then
     rm -f -- "$record"
+    windows_disks_sync_windows_folder
     return 0
   fi
 
-  windows_disks_record_matches && return 0
+  if windows_disks_record_matches; then
+    windows_disks_sync_windows_folder
+    return 0
+  fi
 
   mapfile -t folders < <(windows_disks_desired)
   windows_disks_write_compose "${folders[@]}" || fail "no se pudo cambiar la configuración de Windows"
@@ -146,6 +206,7 @@ windows_disks_apply() {
     # in the config survive, so switching back on remembers them.
     rm -f -- "$record"
   fi
+  windows_disks_sync_windows_folder
 }
 
 windows_disks_status() {
@@ -154,21 +215,22 @@ windows_disks_status() {
   windows_disks_enabled && enabled=true
   windows_disks_record_matches && applied=true
 
-  local name path available
-  while IFS= read -r -d '' name && IFS= read -r -d '' path; do
+  local name path letter available
+  while IFS= read -r -d '' name && IFS= read -r -d '' path && IFS= read -r -d '' letter; do
     [[ -n $path ]] || continue
     available=false
     windows_disks_available "$path" && available=true
-    disks=$(jq -c --arg name "$name" --arg path "$path" --argjson available "$available" \
+    disks=$(jq -c --arg name "$name" --arg path "$path" --arg letter "$letter" --argjson available "$available" \
       --arg share "\\\\host.lan\\Data$index" \
-      '. + [{name: $name, path: $path, available: $available, share: $share}]' <<<"$disks")
+      '. + [{name: $name, path: $path, letter: $letter, available: $available, share: $share}]' <<<"$disks")
     index=$((index + 1))
-  done < <(windows_disks_saved)
+  done < <(config_get -j '.modules["windows-disks"].disks // [] | .[] | .name + "\u0000" + .path + "\u0000" + (.letter // "X") + "\u0000"')
 
   candidates=$(windows_disks_candidates_json)
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson disks "$disks" --argjson candidates "$candidates" --argjson max "$WINDOWS_DISKS_MAX" \
-    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, disks: $disks,
+    --argjson lettersSet "$([[ -e "$WINDOWS_DISKS_SHARED/Omarchy Tool/.letras-puestas" ]] && echo true || echo false)" \
+    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, disks: $disks, lettersSet: $lettersSet,
       summary: (if ($installed | not) then "Windows no está instalado"
         elif $enabled then "Comparte " + ($disks | length | tostring) + (if ($disks | length) == 1 then " disco" else " discos" end)
         else "Desactivado" end),
@@ -201,10 +263,43 @@ windows_disks_add() {
   fi
   name=$(tr -c 'A-Za-z0-9 ._\n-' '_' <<<"$name" | head -c 32)
   windows_disks_valid_name "$name" || fail "invalid name: $name"
-  config_update '.modules["windows-disks"].disks =
-      ((.modules["windows-disks"].disks // []) | map(select(.path != $path)) + [{name: $name, path: $path}])' \
-    --arg path "$path" --arg name "$name"
+  local letter
+  letter=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path == $path) | .letter // empty' --arg path "$path")
+  [[ -n $letter ]] || letter=$(windows_disks_free_letter "$path") || fail "no quedan letras libres"
+  # A disk already saved keeps its place: the order decides Data2 and Data3.
+  config_update '.modules["windows-disks"].disks |= (. // [] |
+      if any(.[]; .path == $path)
+      then map(if .path == $path then .name = $name | .letter = $letter else . end)
+      else . + [{name: $name, path: $path, letter: $letter}] end)' \
+    --arg path "$path" --arg name "$name" --arg letter "$letter"
   windows_disks_apply
+}
+
+# letter <path> <D-Y>: the drive letter Windows gives this disk. "next" picks
+# the following free one.
+windows_disks_letter() {
+  local path=${1:-} letter=${2:-} current i
+  [[ -n $path && -n $letter ]] || fail "usage: omarchy-tool windows-disks letter <path> <D-Y|next>"
+  path=$(windows_disks_normalize "$path")
+  current=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path == $path) | .letter // "X"' --arg path "$path")
+  [[ -n $current ]] || fail "ese disco no está marcado: $path"
+  if [[ $letter == next ]]; then
+    local taken pos
+    taken=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path != $path) | .letter // empty' --arg path "$path")
+    pos=$(( $(expr index "$WINDOWS_DISKS_LETTERS" "$current") ))
+    for ((i = 0; i < ${#WINDOWS_DISKS_LETTERS}; i++)); do
+      letter=${WINDOWS_DISKS_LETTERS:(pos + i) % ${#WINDOWS_DISKS_LETTERS}:1}
+      grep -qxF -- "$letter" <<<"$taken" || break
+    done
+  fi
+  letter=${letter^^}
+  letter=${letter%:}
+  [[ $letter =~ ^[D-Y]$ ]] || fail "letra no válida: $letter (de D a Y; Z es la de Omarchy)"
+  config_get -e 'any(.modules["windows-disks"].disks // [] | .[]; .path != $path and .letter == $letter) | not' \
+    --arg path "$path" --arg letter "$letter" >/dev/null || fail "la letra $letter: ya la usa otro disco"
+  config_update '.modules["windows-disks"].disks |= map(if .path == $path then .letter = $letter else . end)' \
+    --arg path "$path" --arg letter "$letter"
+  windows_disks_sync_windows_folder
 }
 
 # remove <path>

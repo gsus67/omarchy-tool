@@ -29,6 +29,14 @@ if [[ -f $state_dir/windows-disks.applied && -f $state_dir/compose-shares.sh ]];
   fi
 fi
 
+# ~/Windows/Omarchy Tool: keep only "Quitar discos" while Windows still has
+# letters from "Activar discos" (it deletes the folder once run); else drop it.
+windows_folder="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}/Omarchy Tool"
+if [[ -d $windows_folder ]]; then
+  rm -f -- "$windows_folder/.plugin-activo" "$windows_folder/Activar discos.cmd" "$windows_folder/discos.txt"
+  [[ -e $windows_folder/.letras-puestas ]] || rm -rf -- "$windows_folder"
+fi
+
 # Older versions pointed the Windows app at our own launcher; hand it back.
 if [[ -f $desktop ]] && grep '^Exec=' "$desktop" | grep -qF -- "$state_dir/windows-vm-launch"; then
   restore="uwsm app -- omarchy-windows-vm launch"

@@ -47,6 +47,14 @@ añade una carpeta por su ruta (también vale `/home`).
 **Máximo 2 discos activados a la vez**, porque la imagen de Windows solo sirve
 dos carpetas extra (`Data2` y `Data3`). Para usar otro, desmarca uno primero.
 
+**Letras:** Omarchy pone `Z:` a su carpeta Shared una sola vez, al instalar
+Windows. Para tus discos eliges la letra en el panel (por defecto `X:` e `Y:`)
+y el plugin deja en Shared una carpeta **Omarchy Tool** con **Activar discos**,
+que hace lo mismo que hizo Omarchy (`net use X: \\host.lan\Data2
+/persistent:yes` y un acceso en el escritorio). Se abre una vez dentro de
+Windows; si cambias letras o discos, se vuelve a abrir. **Quitar discos** lo
+deshace y, si el plugin está apagado o eliminado, se borra a sí mismo.
+
 Cómo funciona: la imagen `dockurr/windows` que usa Omarchy sirve `/shared2` y
 `/shared3` si existen. El plugin añade esas dos líneas a la configuración de la
 VM (`/var/lib/omarchy/windows/docker-compose.yml`, de root) con
@@ -68,6 +76,7 @@ omarchy-tool self-update                     # actualiza ya si hay versión nuev
 omarchy-tool windows-disks enable|disable
 omarchy-tool windows-disks add /mnt/datos [Nombre]
 omarchy-tool windows-disks remove /mnt/datos
+omarchy-tool windows-disks letter /mnt/datos X   # o "next"
 ```
 
 ## Añadir un módulo

@@ -21,6 +21,9 @@ export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
 export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
 export OMARCHY_TOOL_PRIV=""
+export OMARCHY_TOOL_WINDOWS_SHARED="$work/Windows"
+winfolder="$OMARCHY_TOOL_WINDOWS_SHARED/Omarchy Tool"
+mkdir -p "$OMARCHY_TOOL_WINDOWS_SHARED"
 mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/disk-c"
 
 desktop="$OMARCHY_TOOL_APPLICATIONS_DIR/windows-vm.desktop"
@@ -72,7 +75,8 @@ check "disks get Data2 and Data3" '[[ $(wd ".disks[0].share") == "\\\\host.lan\\
 check "compose untouched while off" 'cmp -s "$compose" "$work/compose-original"'
 check "third disk is refused" '! "$tool" windows-disks add "$work/disk-c" C 2>/dev/null && [[ $(wd ".disks | length") == 2 ]]'
 check "re-adding a saved disk is allowed" '"$tool" windows-disks add "$work/disk-a" DiskA'
-check "unsafe name characters are replaced" '"$tool" windows-disks add "$work/disk-a" "a,b" && [[ $(wd ".disks[1].name") == a_b ]]'
+check "re-adding keeps the disk in its place" '"$tool" windows-disks add "$work/disk-a" DiskA && [[ $(wd ".disks[0].path") == "$work/disk-a" ]]'
+check "unsafe name characters are replaced" '"$tool" windows-disks add "$work/disk-a" "a,b" && [[ $(wd ".disks[0].name") == a_b ]]'
 "$tool" windows-disks remove "$work/disk-a"
 "$tool" windows-disks remove "$work/disk b"
 "$tool" windows-disks add "$work/disk-a" DiskA
@@ -93,6 +97,19 @@ check "compose mode kept" '[[ $(stat -c %a "$compose") == 640 ]]'
 check "status reports applied" '[[ $(wd .applied) == true ]]'
 check "summary counts disks" '[[ $(wd .summary) == "Comparte 2 discos" ]]'
 
+# Letters: X and Y by default, changeable, never shared between disks or Z.
+check "default letters are X and Y" '[[ $(wd ".disks[0].letter") == X && $(wd ".disks[1].letter") == Y ]]'
+check "Windows folder has the scripts" '[[ -f $winfolder/omarchy-tool.ps1 && -f "$winfolder/Activar discos.cmd" && -f "$winfolder/Quitar discos.cmd" && -e $winfolder/.plugin-activo ]]'
+printf 'X|\\\\host.lan\\Data2|DiskA\r\nY|\\\\host.lan\\Data3|Disk B\r\n' >"$work/discos-expected"
+check "discos.txt lists letter, share and name" 'cmp -s "$winfolder/discos.txt" "$work/discos-expected"'
+check "Windows scripts keep CRLF" 'file "$winfolder/Activar discos.cmd" | grep -q CRLF'
+check "letter can be changed" '"$tool" windows-disks letter "$work/disk-a" m && [[ $(wd ".disks[0].letter") == M ]] && grep -q "^M|" "$winfolder/discos.txt"'
+check "letter Z is refused" '! "$tool" windows-disks letter "$work/disk-a" Z 2>/dev/null'
+check "a taken letter is refused" '! "$tool" windows-disks letter "$work/disk-a" Y 2>/dev/null'
+check "next skips the taken letter" '"$tool" windows-disks letter "$work/disk-a" X && "$tool" windows-disks letter "$work/disk-a" next && [[ $(wd ".disks[0].letter") == W ]]'
+"$tool" windows-disks letter "$work/disk-a" X
+check "status says letters not set yet" '[[ $(wd .lettersSet) == false ]]'
+
 before=$(md5sum <"$compose")
 OMARCHY_TOOL_PRIV="false" "$tool" apply
 check "apply does not rewrite when nothing changed" '[[ $(md5sum <"$compose") == "$before" ]]'
@@ -109,10 +126,21 @@ check "removing a disk renumbers the rest" 'grep -qxF "      - \"$work/disk b:/s
 "$tool" windows-disks add "$work/disk-a" DiskA
 
 # Off: compose back to exactly what Omarchy wrote, our record gone.
+touch "$winfolder/.letras-puestas"
+check "status sees letters set in Windows" '[[ $(wd .lettersSet) == true ]]'
 "$tool" windows-disks disable
 check "disable restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "disable removes the record" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied ]]'
 check "disable keeps disk choices" '[[ $(wd ".disks | length") == 2 ]]'
+check "disable leaves only Quitar while Windows has letters" '[[ -f "$winfolder/Quitar discos.cmd" && -f $winfolder/omarchy-tool.ps1 && ! -e "$winfolder/Activar discos.cmd" && ! -e $winfolder/.plugin-activo ]]'
+rm -f "$winfolder/.letras-puestas"
+"$tool" apply
+check "without letters in Windows the folder goes" '[[ ! -e $winfolder ]]'
+
+# Disks saved before letters existed get distinct ones.
+jq '.modules["windows-disks"].disks |= map(del(.letter))' "$OMARCHY_TOOL_CONFIG_DIR/config.json" >"$work/c.json" && mv "$work/c.json" "$OMARCHY_TOOL_CONFIG_DIR/config.json"
+"$tool" apply
+check "missing letters are filled in, distinct" '[[ $(wd ".disks[0].letter") == X && $(wd ".disks[1].letter") == Y ]]'
 
 # A cancelled password prompt leaves things as they were and reports it.
 check "failed privileged write is reported" '! OMARCHY_TOOL_PRIV="false" "$tool" windows-disks enable 2>/dev/null'
@@ -150,6 +178,7 @@ check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DI
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstall restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
+check "uninstall removes the Windows folder" '[[ ! -e $winfolder ]]'
 check "uninstall leaves the menu as it was" 'cmp -s "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"'
 
 # No VM installed: nothing to do, nothing written.
