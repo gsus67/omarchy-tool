@@ -54,7 +54,8 @@ The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
   plugin settings and the menu entry. Since `omarchy plugin remove` does not run
   plugin code, the cleanup is done by a copy of `bin/uninstall.sh` kept outside
   the plugin, which the panel launches when it is unloaded.
-- `omarchy-tool uninstall` runs the same cleanup by hand.
+- `omarchy-tool uninstall` runs the same cleanup by hand (see
+  [Command line](#command-line)).
 
 Files the plugin may write outside its folder, all removed by the cleanup:
 
@@ -153,9 +154,11 @@ configure, and untick it afterwards if you like.
 
 ## Command line
 
-The panel only calls `bin/omarchy-tool`, which you can also use by hand:
+The panel only calls `bin/omarchy-tool`, which you can also use by hand. It is
+not on your `PATH`; add an alias first:
 
 ```bash
+alias omarchy-tool=~/.config/omarchy/plugins/io.github.gsus67.omarchy-tool/bin/omarchy-tool
 omarchy-tool status                          # state of every module (JSON)
 omarchy-tool uninstall                       # remove every trace outside the plugin
 omarchy-tool self-update                     # update now if there is a new version

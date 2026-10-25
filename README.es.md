@@ -36,7 +36,8 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
   plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
   del plugin, la limpieza la hace una copia de `bin/uninstall.sh` guardada fuera
   del plugin, que el panel lanza al descargarse.
-- `omarchy-tool uninstall` hace esa misma limpieza a mano.
+- `omarchy-tool uninstall` hace esa misma limpieza a mano (ver
+  [Línea de comandos](#línea-de-comandos)).
 
 ## Módulos
 
@@ -120,9 +121,11 @@ vayas a configurar y desmárcalo al terminar si quieres.
 
 ## Línea de comandos
 
-El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
+El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano. No
+está en el `PATH`; crea antes un alias:
 
 ```bash
+alias omarchy-tool=~/.config/omarchy/plugins/io.github.gsus67.omarchy-tool/bin/omarchy-tool
 omarchy-tool status                          # estado de todos los módulos (JSON)
 omarchy-tool uninstall                       # borra todo rastro fuera del plugin
 omarchy-tool self-update                     # actualiza ya si hay versión nueva
