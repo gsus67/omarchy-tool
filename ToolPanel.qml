@@ -18,6 +18,27 @@ Panel {
   id: root
   moduleName: "omarchy-tool"
   ipcTarget: "omarchy-tool"
+  // Own handler (the base one has no page()): omarchy-shell omarchy-tool page <module-id>
+  manageIpc: false
+
+  IpcHandler {
+    target: root.ipcTarget
+
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function page(id: string): void {
+      for (var i = 0; i < root.modules.length; i++) {
+        if (root.modules[i].id === id) {
+          root.open()
+          root.openModule(root.modules[i])
+          return
+        }
+      }
+    }
+  }
 
   // Listed in this order, under a header per group; keep a group's modules
   // next to each other.
