@@ -29,6 +29,7 @@ export OMARCHY_TOOL_PRIV=""
 # Never see the real Windows VM: "no VM" unless a test sets a fake pid.
 export OMARCHY_TOOL_VM_PID=""
 export OMARCHY_TOOL_HYPR_DIR="$work/hypr"
+export OMARCHY_TOOL_PLUGINS_DIR="$work/plugins"
 mkdir -p "$OMARCHY_TOOL_HYPR_DIR"
 printf -- '-- user config\nrequire("hypr.bindings")\n' >"$OMARCHY_TOOL_HYPR_DIR/hyprland.lua"
 cp "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"
@@ -229,6 +230,11 @@ check "apply installs the uninstaller" '[[ -x $OMARCHY_TOOL_STATE_DIR/uninstall.
 "$tool" windows-disks enable
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$repo"
 check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]] && grep -q ":/shared2" "$compose"'
+mkdir -p "$OMARCHY_TOOL_PLUGINS_DIR/omarchy-tool"
+printf '{"id": "omarchy-tool"}\n' >"$OMARCHY_TOOL_PLUGINS_DIR/omarchy-tool/manifest.json"
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
+check "uninstaller is a no-op while another install exists (id change)" '[[ -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]] && grep -q ":/shared2" "$compose"'
+rm -rf "$OMARCHY_TOOL_PLUGINS_DIR"
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstall restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
@@ -379,18 +385,18 @@ fake_bin="$work/bin"
 mkdir -p "$fake_bin"
 xdg="$work/xdg"
 git clone -q --bare "$repo" "$work/origin.git"
-git clone -q "$work/origin.git" "$xdg/omarchy/plugins/omarchy-tool"
+git clone -q "$work/origin.git" "$xdg/omarchy/plugins/io.github.gsus67.omarchy-tool"
 git clone -q "$work/origin.git" "$work/upstream"
-printf '#!/bin/bash\necho called >>"%s/updater.log"\ngit -C "%s" merge -q --ff-only "@{upstream}"\n' "$work" "$xdg/omarchy/plugins/omarchy-tool" >"$fake_bin/omarchy-plugin-update"
+printf '#!/bin/bash\necho called >>"%s/updater.log"\ngit -C "%s" merge -q --ff-only "@{upstream}"\n' "$work" "$xdg/omarchy/plugins/io.github.gsus67.omarchy-tool" >"$fake_bin/omarchy-plugin-update"
 printf '#!/bin/bash\necho "$@" >>"%s/notify.log"\n' "$work" >"$fake_bin/omarchy-notification-send"
 chmod +x "$fake_bin/omarchy-plugin-update" "$fake_bin/omarchy-notification-send"
-installed="$xdg/omarchy/plugins/omarchy-tool/bin/omarchy-tool"
+installed="$xdg/omarchy/plugins/io.github.gsus67.omarchy-tool/bin/omarchy-tool"
 XDG_CONFIG_HOME="$xdg" XDG_RUNTIME_DIR="$work" PATH="$fake_bin:$PATH" "$installed" self-update
 check "self-update does nothing when up to date" '[[ ! -e $work/updater.log ]]'
 git -C "$work/upstream" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "newer"
 git -C "$work/upstream" push -q origin HEAD
 XDG_CONFIG_HOME="$xdg" XDG_RUNTIME_DIR="$work" PATH="$fake_bin:$PATH" "$installed" self-update
-check "self-update pulls a newer version" '[[ $(git -C "$xdg/omarchy/plugins/omarchy-tool" log -1 --format=%s) == newer ]]'
+check "self-update pulls a newer version" '[[ $(git -C "$xdg/omarchy/plugins/io.github.gsus67.omarchy-tool" log -1 --format=%s) == newer ]]'
 check "self-update notifies" 'grep -q "Omarchy Tool actualizado" "$work/notify.log"'
 
 check "unknown module fails" '! "$tool" nope status 2>/dev/null'

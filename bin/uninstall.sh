@@ -14,6 +14,17 @@ fi
 
 data_home=${XDG_DATA_HOME:-$HOME/.local/share}
 config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+
+# Another install is still there (the plugin id changed in v0.0.30, so the
+# old and new folders can coexist while moving over): it owns the system.
+if [[ -n $plugin_dir ]]; then
+  for manifest in "${OMARCHY_TOOL_PLUGINS_DIR:-$config_home/omarchy/plugins}"/*/manifest.json; do
+    [[ -f $manifest ]] || continue
+    case $(jq -r '.id // empty' "$manifest" 2>/dev/null) in
+      omarchy-tool | io.github.gsus67.omarchy-tool) exit 0 ;;
+    esac
+  done
+fi
 state_dir="${OMARCHY_TOOL_STATE_DIR:-$data_home/omarchy-tool}"
 config_dir="${OMARCHY_TOOL_CONFIG_DIR:-$config_home/omarchy-tool}"
 desktop="${OMARCHY_TOOL_APPLICATIONS_DIR:-$data_home/applications}/windows-vm.desktop"

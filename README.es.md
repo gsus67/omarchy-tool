@@ -13,8 +13,8 @@ El panel, sus módulos, estados y avisos siguen automáticamente el idioma del s
 
 ```bash
 omarchy plugin add https://github.com/gsus67/omarchy-tool.git --enable
-omarchy plugin update omarchy-tool
-omarchy plugin remove omarchy-tool
+omarchy plugin update io.github.gsus67.omarchy-tool
+omarchy plugin remove io.github.gsus67.omarchy-tool
 ```
 
 El plugin se actualiza solo: comprueba GitHub al arrancar y cada 6 horas, y si

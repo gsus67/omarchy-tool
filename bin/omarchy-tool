@@ -289,8 +289,9 @@ menu_entry_apply() {
 # itself; a dev checkout never does. One run at a time across bar instances.
 cmd_self_update() {
   local plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
-  local lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool-update.lock"
-  [[ $TOOL_DIR == "$plugins_dir/omarchy-tool" ]] || return 0
+  local lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool-update.lock" id
+  id=$(jq -r '.id // empty' "$TOOL_DIR/manifest.json" 2>/dev/null)
+  [[ -n $id && $TOOL_DIR == "$plugins_dir/$id" ]] || return 0
   [[ -d $TOOL_DIR/.git ]] || return 0
 
   exec 9>"$lock"
@@ -303,7 +304,7 @@ cmd_self_update() {
   [[ $head != "$upstream" ]] || return 0
   git -C "$TOOL_DIR" merge-base --is-ancestor HEAD '@{upstream}' || return 0
 
-  omarchy-plugin-update omarchy-tool --yes >/dev/null 2>&1 || return 1
+  omarchy-plugin-update "$id" --yes >/dev/null 2>&1 || return 1
   local version
   version=$(jq -r '.version // ""' "$TOOL_DIR/manifest.json" 2>/dev/null)
   omarchy-notification-send -g "󰦬" "$(tool_text 'Omarchy Tool actualizado')" "$(tool_text 'Ya tienes la versión %1.' "${version:-$(tool_text nueva)}")" >/dev/null 2>&1 || true

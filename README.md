@@ -30,13 +30,13 @@ paths stay the same so existing shortcuts keep working.
 
 ```bash
 omarchy plugin add https://github.com/gsus67/omarchy-tool.git --enable
-omarchy plugin update omarchy-tool
-omarchy plugin remove omarchy-tool
+omarchy plugin update io.github.gsus67.omarchy-tool
+omarchy plugin remove io.github.gsus67.omarchy-tool
 ```
 
 The plugin keeps itself up to date: it checks GitHub at startup and every 6
 hours, and when there is a new version it runs `omarchy plugin update
-omarchy-tool` and shows a notification. `omarchy-tool self-update` does the same
+io.github.gsus67.omarchy-tool` and shows a notification. `omarchy-tool self-update` does the same
 on demand.
 
 Your settings are stored in `~/.config/omarchy-tool/config.json`, outside the

@@ -16,7 +16,7 @@ import qs.Ui
 // in `modules` below.
 Panel {
   id: root
-  moduleName: "omarchy-tool"
+  moduleName: "io.github.gsus67.omarchy-tool"
   ipcTarget: "omarchy-tool"
   // Own handler (the base one has no page()): omarchy-shell omarchy-tool page <module-id>
   manageIpc: false
