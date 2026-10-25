@@ -30,6 +30,35 @@ export OMARCHY_TOOL_PRIV=""
 export OMARCHY_TOOL_VM_PID=""
 export OMARCHY_TOOL_HYPR_DIR="$work/hypr"
 export OMARCHY_TOOL_PLUGINS_DIR="$work/plugins"
+# Never reach the real desktop: any notification a test triggers is logged
+# here instead of popping up.
+mkdir -p "$work/quiet-bin"
+printf '#!/bin/bash\necho "$*" >>"%s/notify-all.log"\n' "$work" >"$work/quiet-bin/omarchy-notification-send"
+chmod +x "$work/quiet-bin/omarchy-notification-send"
+export PATH="$work/quiet-bin:$PATH"
+export OMARCHY_TOOL_OMARCHY="$work/fake-omarchy"
+export OMARCHY_TOOL_SHELL_JSON="$work/shell.json"
+# Fake `omarchy plugin list|enable|disable`: the plugin list lives in a JSON
+# file; enable/disable flip it and log their arguments.
+printf '%s\n' '[{"id":"omarchy.clock","name":"Clock","kinds":["bar-widget"],"enabled":true,"firstParty":true},
+{"id":"io.github.gsus67.omarchy-tool","name":"Omarchy Tool","kinds":["bar-widget"],"enabled":true,"firstParty":false},
+{"id":"acme.weather","name":"Weather","kinds":["bar-widget"],"enabled":true,"firstParty":false},
+{"id":"acme.dock","name":"Dock","kinds":["panel"],"enabled":false,"firstParty":false}]' >"$work/plugins.json"
+printf '%s\n' '{"bar":{"layout":{"left":[{"id":"omarchy.menu"}],"right":[{"id":"omarchy.tray"},{"id":"acme.weather"},{"id":"omarchy.clock"}]}}}' >"$work/shell.json"
+cat >"$OMARCHY_TOOL_OMARCHY" <<FAKE
+#!/bin/bash
+list="$work/plugins.json"
+[[ \$1 == plugin ]] || exit 1
+case \$2 in
+  list) cat "\$list" ;;
+  enable|disable)
+    echo "\$2 \${*:3}" >>"$work/plugin-calls.log"
+    value=\$([[ \$2 == enable ]] && echo true || echo false)
+    jq --arg id "\$3" --argjson v "\$value" 'map(if .id == \$id then .enabled = \$v else . end)' "\$list" >"\$list.tmp" && mv "\$list.tmp" "\$list" ;;
+  *) exit 1 ;;
+esac
+FAKE
+chmod +x "$OMARCHY_TOOL_OMARCHY"
 mkdir -p "$OMARCHY_TOOL_HYPR_DIR"
 printf -- '-- user config\nrequire("hypr.bindings")\n' >"$OMARCHY_TOOL_HYPR_DIR/hyprland.lua"
 cp "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"
@@ -398,6 +427,24 @@ git -C "$work/upstream" push -q origin HEAD
 XDG_CONFIG_HOME="$xdg" XDG_RUNTIME_DIR="$work" PATH="$fake_bin:$PATH" "$installed" self-update
 check "self-update pulls a newer version" '[[ $(git -C "$xdg/omarchy/plugins/io.github.gsus67.omarchy-tool" log -1 --format=%s) == newer ]]'
 check "self-update notifies" 'grep -q "Omarchy Tool actualizado" "$work/notify.log"'
+
+# plugins: lists installed third-party plugins except Omarchy Tool, and turns
+# them on/off through `omarchy plugin`, keeping a widget's place in the bar.
+pl() { "$tool" status | jq -r ".modules.plugins$1"; }
+check "plugins: built-ins and itself are not listed" '[[ $(pl " | [.plugins[].id] | join(\",\")") == "acme.dock,acme.weather" ]]'
+check "plugins: off until the feature is on" '! "$tool" plugins off acme.weather 2>/dev/null && [[ ! -e $work/plugin-calls.log ]]'
+"$tool" plugins enable
+check "plugins: summary counts active ones" '[[ $(pl .summary) == "1 de 2 activos" ]]'
+check "plugins: unknown id is refused" '! "$tool" plugins off acme.nope 2>/dev/null && ! "$tool" plugins off io.github.gsus67.omarchy-tool 2>/dev/null'
+"$tool" plugins off acme.weather
+check "plugins: off disables it" '[[ $(tail -n1 "$work/plugin-calls.log") == "disable acme.weather" ]] && [[ $(pl ".plugins[] | select(.id == \"acme.weather\") | .enabled") == false ]]'
+check "plugins: remembers the bar place" '[[ $(jq -c ".modules.plugins.placements[\"acme.weather\"]" "$OMARCHY_TOOL_CONFIG_DIR/config.json") == "{\"section\":\"right\",\"index\":1}" ]]'
+"$tool" plugins on acme.weather
+check "plugins: on puts it back in its place" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.weather --section right --index 1" ]]'
+"$tool" plugins on acme.dock
+check "plugins: on without a saved place uses the default" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.dock" ]]'
+"$tool" plugins disable
+check "plugins: turning the feature off leaves plugins as they are" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.dock" ]] && [[ $(pl .summary) == Desactivado ]]'
 
 check "unknown module fails" '! "$tool" nope status 2>/dev/null'
 check "unknown action fails" '! "$tool" windows-disks nope 2>/dev/null'

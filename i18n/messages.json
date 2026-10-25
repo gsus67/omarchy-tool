@@ -76,7 +76,19 @@
     "Omarchy Tool actualizado": "Omarchy Tool updated",
     "Ya tienes la versión %1.": "You now have version %1.",
     "nueva": "new",
-    "Marca hasta 2 discos. En Windows salen en \\\\host.lan, junto a la carpeta Shared. Los cambios piden tu contraseña y se ven al volver a abrir Windows.": "Select up to 2 disks. They appear under \\\\host.lan in Windows, next to Shared. Changes require your password and take effect when Windows reopens."
+    "Marca hasta 2 discos. En Windows salen en \\\\host.lan, junto a la carpeta Shared. Los cambios piden tu contraseña y se ven al volver a abrir Windows.": "Select up to 2 disks. They appear under \\\\host.lan in Windows, next to Shared. Changes require your password and take effect when Windows reopens.",
+    "Plugins": "Plugins",
+    "Icono en la barra": "Bar icon",
+    "Panel": "Panel",
+    "Servicio": "Service",
+    "Activa o desactiva tus plugins instalados. Al desactivar un icono de la barra se recuerda su sitio y vuelve ahí al activarlo.": "Turn your installed plugins on and off. A bar icon remembers its place when turned off and goes back there when turned on.",
+    "Plugins instalados": "Installed plugins",
+    "No hay otros plugins instalados.": "No other plugins are installed.",
+    "%1 de %2 activos": "%1 of %2 on",
+    "activa primero la función Plugins": "turn on the Plugins feature first",
+    "plugin desconocido: %1": "unknown plugin: %1",
+    "no se pudo activar %1": "could not turn on %1",
+    "no se pudo desactivar %1": "could not turn off %1"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

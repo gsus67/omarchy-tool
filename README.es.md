@@ -119,6 +119,17 @@ Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
 dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
 vayas a configurar y desmárcalo al terminar si quieres.
 
+### Plugins
+
+Activa y desactiva desde el panel tus plugins de Omarchy instalados, con un
+interruptor para cada uno. La lista sale de `omarchy plugin list`, así que los
+plugins que añadas después aparecen solos; los plugins integrados de Omarchy y
+el propio Omarchy Tool no salen. Usa el propio `omarchy plugin enable|disable`
+de Omarchy: no pide contraseña y no escribe nada fuera de la configuración del
+plugin. Al desactivar un icono de la barra se recuerda su sitio (sección y
+posición) y vuelve ahí al activarlo. Desactivar esta función deja cada plugin
+como esté.
+
 ## Línea de comandos
 
 El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano. No
@@ -141,6 +152,8 @@ omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
 omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
 omarchy-tool usb-windows move linux --all            # lo mismo que SUPER+ALT+U
+omarchy-tool plugins enable|disable
+omarchy-tool plugins on|off io.github.gsus67.omarchy-taskbar
 ```
 
 ## Añadir un módulo

@@ -250,6 +250,8 @@ cmd_status() {
         elif .key == "windows-disks" then counttext((if (.value.disks | length) == 1 then "Comparte %1 disco" else "Comparte %1 discos" end); (.value.disks | length))
         elif .key == "usb-windows" then counttext("%1 en Windows"; (.value.inWindows | length))
         elif .key == "web-devices" then counttext("%1 con acceso"; (.value.devices | length))
+        elif .key == "plugins" then (.value.plugins | length | tostring) as $total
+          | counttext("%1 de %2 activos"; ([.value.plugins[] | select(.enabled)] | length)) | sub("%2"; $total)
         else t(.value.summary) end))'
 }
 
