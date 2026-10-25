@@ -302,6 +302,10 @@ Panel {
           // Page: the open module.
           Loader {
             width: parent.width
+            // A Loader keeps the size of the page it last held; hidden, the
+            // Column leaves no gap, so the list shrinks back after a page.
+            visible: active
+            height: active && item ? item.implicitHeight : 0
             active: root.current !== null
             source: root.current ? Qt.resolvedUrl(root.current.source) : ""
             onLoaded: {

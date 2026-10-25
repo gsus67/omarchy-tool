@@ -254,6 +254,12 @@ usb_windows_rdp_open() {
   pgrep -x xfreerdp3 >/dev/null
 }
 
+# Open viewer windows (noVNC web app). Never real windows under tests.
+usb_windows_viewer_windows() {
+  [[ -z ${OMARCHY_TOOL_HYPR_DIR:-} ]] && command -v hyprctl >/dev/null || return 0
+  hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class | startswith("chrome-127.0.0.1__")) | .address'
+}
+
 # console-open: Windows on its own screen, where a passed mouse shows.
 usb_windows_console_open() {
   local user pass url
@@ -267,6 +273,13 @@ usb_windows_console_open() {
     usb_windows_notify "Abriendo Windows con tu ratón" "Tarda un poco. Se abrirá la pantalla de Windows y tus periféricos encendidos pasarán solos."
     PATH="$TOOL_DIR/bin/no-rdp:$PATH" omarchy-windows-vm launch --keep-alive >/dev/null 2>&1 ||
       fail "no se pudo abrir Windows"
+  fi
+  # Already open: bring it up instead of opening a second one.
+  local open
+  open=$(usb_windows_viewer_windows | head -n1)
+  if [[ -n $open ]]; then
+    hyprctl dispatch "hl.dsp.window.focus({ window = \"address:$open\" })" >/dev/null 2>&1 || true
+    return 0
   fi
   # The viewer is behind the same user and password as Windows itself.
   user=$(sed -n 's/^USERNAME=//p' "$HOME/.config/windows/credentials" 2>/dev/null | head -n1)
@@ -282,7 +295,11 @@ usb_windows_console_open() {
 
 # console-close: give everything back and shut Windows down.
 usb_windows_console_close() {
+  local window
   usb_windows_sync_live_off || true
+  while IFS= read -r window; do
+    [[ -n $window ]] && hyprctl dispatch "hl.dsp.window.close({ window = \"address:$window\" })" >/dev/null 2>&1
+  done < <(usb_windows_viewer_windows)
   omarchy-windows-vm stop >/dev/null 2>&1 || fail "no se pudo apagar Windows"
 }
 

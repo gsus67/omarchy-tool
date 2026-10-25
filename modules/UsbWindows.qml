@@ -5,8 +5,8 @@ import qs.Commons as Commons
 import qs.Ui
 
 // Module: usb-windows page. The on/off switch lives on the panel's list;
-// here the user ticks which connected USB devices Windows takes over while
-// it runs, for Windows-only apps like Glorious CORE.
+// here each connected USB device has its own switch: on means "in Windows".
+// Kept short: one compact row per device, one line per hint.
 Column {
   id: root
 
@@ -23,127 +23,126 @@ Column {
     var candidates = status.candidates || []
     var devices = status.devices || []
     for (var i = 0; i < candidates.length; i++) {
-      seen[candidates[i].id] = true
-      list.push({ id: candidates[i].id, name: candidates[i].name, selected: candidates[i].selected === true,
-        detail: candidates[i].id + (root.status.vmRunning ? (candidates[i].inWindows ? " · en Windows" : " · en Linux") : "") })
+      var c = candidates[i]
+      seen[c.id] = true
+      list.push({ id: c.id, name: c.name, selected: c.selected === true,
+        state: root.status.vmRunning ? (c.inWindows ? "en Windows" : "") : "" })
     }
     for (var j = 0; j < devices.length; j++) {
       if (seen[devices[j].id]) continue
-      list.push({ id: devices[j].id, name: devices[j].name, detail: devices[j].id + " · no conectado", selected: true })
+      list.push({ id: devices[j].id, name: devices[j].name, selected: true, state: "no conectado" })
     }
     return list
   }
 
   width: parent ? parent.width : implicitWidth
-  spacing: Style.space(8)
+  spacing: Style.space(6)
 
   function run(args) {
     if (tool) tool.run(args)
   }
 
-  Text {
+  component Hint: Text {
     textFormat: Text.PlainText
-    text: root.status.vmInstalled === false
-      ? "Instala Windows desde el menú de Omarchy para usar esto."
-      : "Para apps que solo existen en Windows (Glorious CORE, iCUE...). Enciende un dispositivo y pasa a Windows: al momento si está abierto, o en cuanto lo abras. Apágalo y vuelve a Linux. Mientras esté en Windows, Linux no lo tiene."
     color: Qt.darker(root.fg, 1.5)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    wrapMode: Text.Wrap
-    width: parent.width
-  }
-
-  Text {
-    textFormat: Text.PlainText
-    text: "Dispositivos USB (" + (root.status.devices ? root.status.devices.length : 0) + " de " + (root.status.max || 4) + ")"
-    color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
     font.pixelSize: Style.font.caption
-    font.bold: true
-    topPadding: Style.space(4)
-  }
-
-  Text {
-    textFormat: Text.PlainText
-    visible: root.rows.length === 0
-    text: "No hay dispositivos USB conectados."
-    color: Qt.darker(root.fg, 1.5)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
     wrapMode: Text.Wrap
-    width: parent.width
+    width: root.width
   }
 
-  Text {
-    textFormat: Text.PlainText
-    text: "Para devolverlo todo a Linux sin ratón: SUPER + ALT + U (funciona aunque Windows tenga el teclado), o dentro de Windows abre Shared › Omarchy Tool › Periféricos › Devolver periféricos a Linux."
+  Hint {
+    visible: root.status.vmInstalled === false
+    text: "Instala Windows desde el menú de Omarchy para usar esto."
+  }
+
+  Hint {
+    text: "Encendido: el dispositivo pasa a Windows. Devolver todo: SUPER + ALT + U."
     color: root.fg
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    font.bold: true
-    wrapMode: Text.Wrap
-    width: parent.width
   }
 
-  Text {
-    textFormat: Text.PlainText
-    text: "No pases a Windows el teclado o el ratón que estás usando si no tienes otro a mano, ni el Bluetooth: Linux los pierde mientras estén allí."
+  Hint {
+    text: "No pases el teclado o ratón que usas, ni el Bluetooth."
     color: Commons.Color.urgent
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    wrapMode: Text.Wrap
-    width: parent.width
   }
 
-  Text {
-    textFormat: Text.PlainText
+  Hint {
     visible: root.active && root.status.vmRunning === true && root.status.liveReady !== true
-    text: "Windows se abrió antes de preparar esto: ciérralo y ábrelo una vez para poder pasarle dispositivos."
+    text: "Cierra y abre Windows una vez para poder pasarle dispositivos."
     color: Commons.Color.urgent
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    wrapMode: Text.Wrap
-    width: parent.width
   }
 
   Repeater {
     model: root.rows
 
-    Toggle {
+    // Compact row: name (and where it is) plus its switch.
+    BorderSurface {
+      id: row
       required property var modelData
+      readonly property bool hot: mouse.containsMouse
+
       width: root.width
-      label: modelData.name
-      description: modelData.detail
-      checked: modelData.selected
-      foreground: root.fg
+      implicitHeight: toggle.implicitHeight + Style.space(4)
+      radius: Style.cornerRadius
+      color: Style.controlFill(false, hot, root.fg, Commons.Color.accent)
+      borderSpec: Border.controlSpec(hot ? "hover-cursor" : "normal", root.fg, Commons.Color.accent)
       opacity: root.active ? 1 : 0.6
-      onClicked: root.run(["usb-windows", modelData.selected ? "remove" : "add", modelData.id])
+
+      Text {
+        textFormat: Text.PlainText
+        text: row.modelData.name
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        font.bold: true
+        elide: Text.ElideRight
+        anchors.left: parent.left
+        anchors.right: stateText.left
+        anchors.leftMargin: Style.spacing.rowPaddingX
+        anchors.rightMargin: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        id: stateText
+        textFormat: Text.PlainText
+        text: row.modelData.state
+        color: Commons.Color.accent
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        anchors.right: toggle.left
+        anchors.rightMargin: Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      ToggleSwitch {
+        id: toggle
+        checked: row.modelData.selected
+        interactive: false
+        cursorRing: false
+        foreground: root.fg
+        anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.rowPaddingX
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      MouseArea {
+        id: mouse
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.run(["usb-windows", row.modelData.selected ? "remove" : "add", row.modelData.id])
+      }
     }
   }
 
-  // See the passed mouse: Windows on its own screen instead of the remote window.
-  Text {
-    textFormat: Text.PlainText
+  // The passed mouse's cursor only shows on Windows' own screen.
+  Hint {
     visible: root.active
-    text: "Ver el cursor de tu ratón"
-    color: Qt.darker(root.fg, 1.4)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.caption
-    font.bold: true
     topPadding: Style.space(4)
-  }
-
-  Text {
-    textFormat: Text.PlainText
-    visible: root.active
     text: root.status.rdpOpen
-      ? "En la ventana normal de Windows el ratón pasado no mueve el cursor. Cierra esa ventana y usa \"Abrir Windows con mi ratón\": abre la pantalla propia de Windows, donde sí se ve."
-      : "Abre Windows en su propia pantalla, donde el cursor de tu ratón sí se ve. Entra con tu contraseña de Windows. Al terminar: SUPER + ALT + U y \"Apagar Windows\"."
-    color: Qt.darker(root.fg, 1.5)
-    font.family: Style.font.family
-    font.pixelSize: Style.font.bodySmall
-    wrapMode: Text.Wrap
-    width: parent.width
+      ? "¿No ves el cursor? Cierra la ventana de Windows y ábrelo aquí:"
+      : "¿No ves el cursor? Ábrelo en su propia pantalla:"
   }
 
   Row {
@@ -151,7 +150,7 @@ Column {
     spacing: Style.space(8)
 
     Button {
-      text: "Abrir Windows con mi ratón"
+      text: "Abrir con mi ratón"
       bordered: true
       foreground: root.fg
       opacity: root.status.rdpOpen ? 0.5 : 1
