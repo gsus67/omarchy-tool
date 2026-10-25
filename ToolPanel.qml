@@ -51,6 +51,9 @@ Panel {
     actionProc.running = true
   }
 
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
   onOpenedChanged: if (opened) refresh()
 
   // Re-sync side effects at shell start: Omarchy may have rewritten the
