@@ -159,6 +159,9 @@ windows_disks_status() {
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson disks "$disks" --argjson candidates "$candidates" \
     '{enabled: $enabled, vmInstalled: $installed, applied: $applied, disks: $disks,
+      summary: (if ($installed | not) then "Windows no está instalado"
+        elif $enabled then "Abre con " + ($disks | length | tostring) + (if ($disks | length) == 1 then " disco" else " discos" end)
+        else "Desactivado" end),
       candidates: [$candidates[] | . as $c | . + {selected: any($disks[]; .path == $c.path)}]}'
 }
 

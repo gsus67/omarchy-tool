@@ -32,6 +32,7 @@ bad() { echo "FAIL - $1"; failures=$((failures + 1)); }
 check() { if eval "$2"; then pass "$1"; else bad "$1"; fi; }
 
 check "status is valid JSON" '"$tool" status | jq -e ".modules[\"windows-disks\"].enabled == false" >/dev/null'
+check "summary says disabled" '[[ $("$tool" status | jq -r ".modules[\"windows-disks\"].summary") == Desactivado ]]'
 check "starts with no disks" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 0 ]]'
 
 "$tool" windows-disks add "$work/disk-a" DiskA
