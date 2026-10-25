@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
@@ -117,6 +118,55 @@ Column {
       foreground: root.fg
       opacity: root.active ? 1 : 0.6
       onClicked: root.run(["usb-windows", modelData.selected ? "remove" : "add", modelData.id])
+    }
+  }
+
+  // See the passed mouse: Windows on its own screen instead of the remote window.
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active
+    text: "Ver el cursor de tu ratón"
+    color: Qt.darker(root.fg, 1.4)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.bold: true
+    topPadding: Style.space(4)
+  }
+
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active
+    text: root.status.rdpOpen
+      ? "En la ventana normal de Windows el ratón pasado no mueve el cursor. Cierra esa ventana y usa \"Abrir Windows con mi ratón\": abre la pantalla propia de Windows, donde sí se ve."
+      : "Abre Windows en su propia pantalla, donde el cursor de tu ratón sí se ve. Entra con tu contraseña de Windows. Al terminar: SUPER + ALT + U y \"Apagar Windows\"."
+    color: Qt.darker(root.fg, 1.5)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    wrapMode: Text.Wrap
+    width: parent.width
+  }
+
+  Row {
+    visible: root.active
+    spacing: Style.space(8)
+
+    Button {
+      text: "Abrir Windows con mi ratón"
+      bordered: true
+      foreground: root.fg
+      opacity: root.status.rdpOpen ? 0.5 : 1
+      onClicked: if (!root.status.rdpOpen && root.tool) {
+        Quickshell.execDetached([root.tool.toolPath, "usb-windows", "console-open"])
+        root.tool.close()
+      }
+    }
+
+    Button {
+      visible: root.status.vmRunning === true && !root.status.rdpOpen
+      text: "Apagar Windows"
+      bordered: true
+      foreground: root.fg
+      onClicked: root.run(["usb-windows", "console-close"])
     }
   }
 }

@@ -302,6 +302,21 @@ touch "$usbfolder/.devolver-usb"
 check "a request from Windows gives everything back" '[[ $(OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_PRIV=echo "$tool" usb-windows check-request) == *"detach 093a:822a" ]] && [[ ! -e $usbfolder/.devolver-usb && $(wu ".devices | length") == 0 ]]'
 check "no request: check-request does nothing" '"$tool" usb-windows check-request'
 check "watcher reports pid and request" '[[ $(bash "$repo/bin/usb-watch.sh" "$usbfolder/.devolver-usb") == "pid="*" request=0" ]] && touch "$usbfolder/.devolver-usb" && [[ $(bash "$repo/bin/usb-watch.sh" "$usbfolder/.devolver-usb") == *"request=1" ]] && rm "$usbfolder/.devolver-usb"'
+# "Abrir Windows con mi ratón": Windows on its own screen (fake Omarchy tools).
+fake_bin3="$work/bin3"; mkdir -p "$fake_bin3"
+printf '#!/bin/bash\necho "vm $* path=$PATH" >>"%s/vm.log"\n' "$work" >"$fake_bin3/omarchy-windows-vm"
+printf '#!/bin/bash\necho "webapp $*" >>"%s/vm.log"\n' "$work" >"$fake_bin3/omarchy-launch-webapp"
+chmod +x "$fake_bin3"/*
+check "refused while the normal Windows window is open" '! OMARCHY_TOOL_RDP_OPEN=1 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open 2>/dev/null && [[ ! -e $work/vm.log ]]'
+OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3
+check "starts Windows kept alive, without the remote window" 'grep -q "^vm launch --keep-alive path=$repo/bin/no-rdp:" "$work/vm.log"'
+check "opens the Windows screen as a web app" 'grep -q "^webapp http://.*127.0.0.1:8006/$" "$work/vm.log"'
+check "no-op RDP shim exits cleanly" 'bash "$repo/bin/no-rdp/xfreerdp3" /v:x'
+rm -f "$work/vm.log"
+OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3
+check "already running: only opens the screen" '! grep -q "^vm " "$work/vm.log" && grep -q "^webapp " "$work/vm.log"'
+check "Apagar Windows stops the VM" 'PATH="$fake_bin3:$PATH" "$tool" usb-windows console-close && grep -q "^vm stop" "$work/vm.log"'
+check "status says whether the remote window is open" '[[ $(OMARCHY_TOOL_RDP_OPEN=1 wu .rdpOpen) == true && $(OMARCHY_TOOL_RDP_OPEN=0 wu .rdpOpen) == false ]]'
 check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && "$tool" usb-windows add aaaa:0003 && "$tool" usb-windows add aaaa:0004 && ! "$tool" usb-windows add aaaa:0005 2>/dev/null'
 "$tool" usb-windows disable
 unset OMARCHY_TOOL_VM_STARTED

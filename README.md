@@ -90,8 +90,12 @@ Máximo 4 dispositivos.
 
 Ojo con el cursor: Omarchy muestra Windows como **sesión remota**; un ratón
 pasado por USB mueve el cursor de la pantalla "física" de la VM, no el de esa
-sesión. Las apps lo detectan (para configurarlo vale), pero para mover el
-cursor en la ventana de Windows hace falta otro ratón o el teclado.
+sesión. Para verlo, cierra la ventana de Windows y usa **Abrir Windows con mi
+ratón**: arranca Windows sin la ventana remota (`omarchy-windows-vm launch
+--keep-alive` con un `xfreerdp3` vacío delante en el `PATH`) y abre su pantalla
+propia (el noVNC de `dockurr/windows` en `127.0.0.1:8006`) como web app; ahí
+entras con tu contraseña de Windows y el cursor del ratón pasado sí se ve. Al
+terminar: **SUPER + ALT + U** y **Apagar Windows**.
 
 ### Periféricos en navegador
 

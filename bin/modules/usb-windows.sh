@@ -14,6 +14,12 @@
 # when the VM appears. SUPER+ALT+U, or "Devolver periféricos a Linux" inside
 # Windows, gives everything back and switches those devices off.
 #
+# The cursor of a passed mouse moves on the VM's own screen, not in the remote
+# window Omarchy shows. console-open starts Windows without that window (the
+# launcher with --keep-alive and a no-op xfreerdp3 first on PATH) and opens
+# the VM screen (dockurr/windows' noVNC on 127.0.0.1:8006) as a web app;
+# console-close stops it.
+#
 # $STATE_DIR/usb-live.state remembers moves for the current VM run: its first
 # line is the QEMU pid, then "+id" (moved to Windows) or "-id" (moved back).
 
@@ -240,6 +246,45 @@ usb_windows_move() {
   if [[ $where == windows ]]; then usb_windows_add "$id"; else usb_windows_remove "$id"; fi
 }
 
+usb_windows_rdp_open() {
+  if [[ -n ${OMARCHY_TOOL_RDP_OPEN+x} ]]; then
+    [[ $OMARCHY_TOOL_RDP_OPEN == 1 ]]
+    return
+  fi
+  pgrep -x xfreerdp3 >/dev/null
+}
+
+# console-open: Windows on its own screen, where a passed mouse shows.
+usb_windows_console_open() {
+  local user pass url
+  [[ -f $COMPOSE_FILE ]] || fail "Windows no está instalado"
+  usb_windows_enabled || fail "enciende primero Periféricos en Windows"
+  if usb_windows_rdp_open; then
+    usb_windows_notify "Cierra antes la ventana de Windows" "Este modo usa la pantalla propia de Windows en vez de la ventana normal."
+    fail "cierra antes la ventana de Windows"
+  fi
+  if [[ -z $(usb_windows_vm_pid) ]]; then
+    usb_windows_notify "Abriendo Windows con tu ratón" "Tarda un poco. Se abrirá la pantalla de Windows y tus periféricos encendidos pasarán solos."
+    PATH="$TOOL_DIR/bin/no-rdp:$PATH" omarchy-windows-vm launch --keep-alive >/dev/null 2>&1 ||
+      fail "no se pudo abrir Windows"
+  fi
+  # The viewer is behind the same user and password as Windows itself.
+  user=$(sed -n 's/^USERNAME=//p' "$HOME/.config/windows/credentials" 2>/dev/null | head -n1)
+  pass=$(sed -n 's/^PASSWORD=//p' "$HOME/.config/windows/credentials" 2>/dev/null | head -n1)
+  url="http://127.0.0.1:8006/"
+  if [[ -n $user && -n $pass ]]; then
+    url="http://$(jq -rn --arg v "$user" '$v|@uri'):$(jq -rn --arg v "$pass" '$v|@uri')@127.0.0.1:8006/"
+  fi
+  omarchy-launch-webapp "$url" >/dev/null 2>&1 &
+  disown
+}
+
+# console-close: give everything back and shut Windows down.
+usb_windows_console_close() {
+  usb_windows_sync_live_off || true
+  omarchy-windows-vm stop >/dev/null 2>&1 || fail "no se pudo apagar Windows"
+}
+
 usb_windows_status() {
   local enabled=false installed=false applied=false connected devices pid inwin='[]' id ready=false
   usb_windows_enabled && enabled=true
@@ -258,7 +303,8 @@ usb_windows_status() {
     --argjson connected "$connected" --argjson devices "$devices" --argjson max "$USB_WINDOWS_MAX" \
     --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" --argjson ready "$ready" \
     --arg request "$USB_WINDOWS_FOLDER/.devolver-usb" --arg watch "$TOOL_DIR/bin/usb-watch.sh" \
-    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running, liveReady: $ready,
+    --argjson rdp "$(usb_windows_rdp_open && echo true || echo false)" \
+    '{enabled: $enabled, rdpOpen: $rdp, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running, liveReady: $ready,
       requestFile: $request, watcher: $watch, inWindows: $inwin,
       devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id), inWindows: any($inwin[]; . == $d.id)}],
       candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id), inWindows: any($inwin[]; . == $c.id)}],

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Put first on PATH by `omarchy-tool usb-windows console-open` only: lets
+# `omarchy-windows-vm launch --keep-alive` start Windows without opening the
+# remote window, so Windows is used through its own screen (noVNC) instead.
+exit 0
