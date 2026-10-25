@@ -11,6 +11,7 @@ Column {
 
   property var tool: null
   property var status: ({})
+  function t(source) { return tool ? tool.t(source) : source }
 
   readonly property color fg: tool ? tool.barForeground : Commons.Color.foreground
   readonly property bool active: status.enabled === true
@@ -46,7 +47,7 @@ Column {
       list.push({
         path: disks[j].path,
         name: disks[j].name,
-        detail: detail(disks[j].path, disks[j].available ? "" : " · no conectado", disks[j]),
+        detail: detail(disks[j].path, disks[j].available ? "" : root.t(" · no conectado"), disks[j]),
         selected: true,
         label: ""
       })
@@ -71,8 +72,8 @@ Column {
   Text {
     textFormat: Text.PlainText
     text: root.vmInstalled
-      ? "Marca hasta 2 discos. En Windows salen en \\\\host.lan, junto a la carpeta Shared. Los cambios piden tu contraseña y se ven al volver a abrir Windows."
-      : "Instala Windows desde el menú de Omarchy para usar esto."
+      ? root.t("Marca hasta 2 discos. En Windows salen en \\\\host.lan, junto a la carpeta Shared. Los cambios piden tu contraseña y se ven al volver a abrir Windows.")
+      : root.t("Instala Windows desde el menú de Omarchy para usar esto.")
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -82,7 +83,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    text: "Discos (" + (root.status.disks ? root.status.disks.length : 0) + " de " + (root.status.max || 2) + ")"
+    text: root.t("Discos (") + (root.status.disks ? root.status.disks.length : 0) + root.t(" de ") + (root.status.max || 2) + ")"
     color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
     font.pixelSize: Style.font.caption
@@ -93,7 +94,7 @@ Column {
   Text {
     textFormat: Text.PlainText
     visible: root.rows.length === 0
-    text: "No hay discos montados en /mnt, /media o /run/media."
+    text: root.t("No hay discos montados en /mnt, /media o /run/media.")
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -125,7 +126,7 @@ Column {
     TextField {
       id: pathField
       width: parent.width - addButton.width - parent.spacing
-      placeholderText: "Otra carpeta, ej. /mnt/juegos"
+      placeholderText: root.t("Otra carpeta, ej. /mnt/juegos")
       foreground: root.fg
       onAccepted: root.addPath()
       onActiveFocusChanged: if (root.tool) root.tool.typing = activeFocus
@@ -134,7 +135,7 @@ Column {
 
     Button {
       id: addButton
-      text: "Añadir"
+      text: root.t("Añadir")
       bordered: true
       foreground: root.fg
       anchors.verticalCenter: pathField.verticalCenter
@@ -146,7 +147,7 @@ Column {
   Text {
     textFormat: Text.PlainText
     visible: root.active && (root.status.disks || []).length > 0
-    text: "Letras en Windows"
+    text: root.t("Letras en Windows")
     color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
     font.pixelSize: Style.font.caption
@@ -178,7 +179,7 @@ Column {
       Button {
         id: letterButton
         text: modelData.letter + ":"
-        tooltipText: "Cambiar letra"
+        tooltipText: root.t("Cambiar letra")
         bordered: true
         foreground: root.fg
         anchors.right: parent.right
@@ -191,8 +192,8 @@ Column {
     textFormat: Text.PlainText
     visible: root.active && (root.status.disks || []).length > 0
     text: root.status.lettersSet
-      ? "Si cambias letras o discos, vuelve a abrir \"Activar discos\" en Windows."
-      : "Para que salgan con su letra, abre una vez en Windows: escritorio › Shared › Omarchy Tool › Discos › Activar discos."
+      ? root.t("Si cambias letras o discos, vuelve a abrir \"Activar discos\" en Windows.")
+      : root.t("Para que salgan con su letra, abre una vez en Windows: escritorio › Shared › Omarchy Tool › Discos › Activar discos.")
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall

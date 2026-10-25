@@ -50,6 +50,7 @@ web_devices_applied() {
 web_devices_apply() {
   local ids=()
   mkdir -p -- "$STATE_DIR"
+  install_helper_i18n
   install -m 0644 -- "$TOOL_DIR/bin/udev-webhid.sh" "$STATE_DIR/udev-webhid.sh"
   [[ $(web_devices_desired) == "$(web_devices_applied)" ]] && return 0
   mapfile -t ids < <(web_devices_desired)

@@ -23,9 +23,15 @@
 # ending in "# omarchy-tool". Everything else is copied as is.
 
 set -euo pipefail
+helper_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f $helper_dir/i18n.sh ]]; then
+  source "$helper_dir/i18n.sh"
+else
+  tool_text() { printf '%s' "$1"; }
+fi
 
 fail() {
-  echo "compose-edit: $*" >&2
+  printf 'compose-edit: %s\n' "$(tool_text "$*")" >&2
   exit 1
 }
 
@@ -45,17 +51,17 @@ while (($#)); do
       folder=$2
       # Only disk and home locations; nothing YAML or the bind syntax would
       # reinterpret (quotes, backslashes, colons, commas, comments, newlines).
-      [[ $folder =~ ^/(mnt|media|run/media|home)/[^\"\\:,#$'\n']+$ ]] || fail "refusing folder: $folder"
-      [[ $folder != */.. && $folder != */../* && $folder != */. && $folder != */./* ]] || fail "refusing folder: $folder"
-      [[ -d $folder && ! -L $folder ]] || fail "not a folder: $folder"
+      [[ $folder =~ ^/(mnt|media|run/media|home)/[^\"\\:,#$'\n']+$ ]] || fail "$(tool_text 'refusing folder: %1' "$folder")"
+      [[ $folder != */.. && $folder != */../* && $folder != */. && $folder != */./* ]] || fail "$(tool_text 'refusing folder: %1' "$folder")"
+      [[ -d $folder && ! -L $folder ]] || fail "$(tool_text 'not a folder: %1' "$folder")"
       # No symlink anywhere on the way: /home/x/link could lead to /etc.
-      [[ $(realpath -e -- "$folder") == "$folder" ]] || fail "refusing a path through a symlink: $folder"
+      [[ $(realpath -e -- "$folder") == "$folder" ]] || fail "$(tool_text 'refusing a path through a symlink: %1' "$folder")"
       shares+=("$folder")
       shift 2
       ;;
     --usb)
       (($# >= 2)) || fail "--usb needs a device id"
-      [[ $2 =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "refusing device id: $2"
+      [[ $2 =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "$(tool_text 'refusing device id: %1' "$2")"
       usbs+=("$2")
       shift 2
       ;;
@@ -65,7 +71,7 @@ while (($#)); do
       usb_bus=true
       shift 2
       ;;
-    *) fail "unknown option: $1" ;;
+    *) fail "$(tool_text 'unknown option: %1' "$1")" ;;
   esac
 done
 ((${#shares[@]} <= 2)) || fail "at most two folders"

@@ -13,6 +13,7 @@ Column {
 
   property var tool: null
   property var status: ({})
+  function t(source) { return tool ? tool.t(source) : source }
 
   readonly property color fg: tool ? tool.barForeground : Commons.Color.foreground
   readonly property bool active: status.enabled === true
@@ -27,11 +28,11 @@ Column {
       var c = candidates[i]
       seen[c.id] = true
       list.push({ id: c.id, name: c.name, selected: c.selected === true,
-        detail: c.id + (root.status.vmRunning && c.inWindows ? " · en Windows" : "") })
+        detail: c.id + (root.status.vmRunning && c.inWindows ? root.t(" · en Windows") : "") })
     }
     for (var j = 0; j < devices.length; j++) {
       if (seen[devices[j].id]) continue
-      list.push({ id: devices[j].id, name: devices[j].name, selected: true, detail: devices[j].id + " · no conectado" })
+      list.push({ id: devices[j].id, name: devices[j].name, selected: true, detail: devices[j].id + root.t(" · no conectado") })
     }
     return list
   }
@@ -63,23 +64,23 @@ Column {
 
   Note {
     text: root.status.vmInstalled === false
-      ? "Instala Windows desde el menú de Omarchy para usar esto."
-      : "Enciende un dispositivo y pasa a Windows; apágalo y vuelve a Linux. Devolver todo: SUPER + ALT + U."
+      ? root.t("Instala Windows desde el menú de Omarchy para usar esto.")
+      : root.t("Enciende un dispositivo y pasa a Windows; apágalo y vuelve a Linux. Devolver todo: SUPER + ALT + U.")
   }
 
   Note {
     visible: root.active && root.status.vmRunning === true && root.status.liveReady !== true
-    text: "Cierra y abre Windows una vez para poder pasarle dispositivos."
+    text: root.t("Cierra y abre Windows una vez para poder pasarle dispositivos.")
     color: Commons.Color.urgent
   }
 
   Header {
-    text: "Dispositivos (" + (root.status.devices ? root.status.devices.length : 0) + " de " + (root.status.max || 4) + ")"
+    text: root.t("Dispositivos (") + (root.status.devices ? root.status.devices.length : 0) + root.t(" de ") + (root.status.max || 4) + ")"
   }
 
   Note {
     visible: root.rows.length === 0
-    text: "No hay dispositivos USB conectados."
+    text: root.t("No hay dispositivos USB conectados.")
   }
 
   Repeater {
@@ -98,21 +99,21 @@ Column {
   }
 
   Note {
-    text: "No pases el teclado o ratón que usas, ni el Bluetooth."
+    text: root.t("No pases el teclado o ratón que usas, ni el Bluetooth.")
     color: Commons.Color.urgent
   }
 
   // The passed mouse's cursor only shows on Windows' own screen.
   Header {
     visible: root.active
-    text: "Ver el cursor"
+    text: root.t("Ver el cursor")
   }
 
   Note {
     visible: root.active
     text: root.status.rdpOpen
-      ? "Cierra la ventana de Windows y ábrelo en su propia pantalla."
-      : "Abre Windows en su propia pantalla, donde se ve el cursor del ratón pasado."
+      ? root.t("Cierra la ventana de Windows y ábrelo en su propia pantalla.")
+      : root.t("Abre Windows en su propia pantalla, donde se ve el cursor del ratón pasado.")
   }
 
   Row {
@@ -120,7 +121,7 @@ Column {
     spacing: Style.space(8)
 
     Button {
-      text: "Abrir con mi ratón"
+      text: root.t("Abrir con mi ratón")
       bordered: true
       foreground: root.fg
       opacity: root.status.rdpOpen ? 0.5 : 1
@@ -132,7 +133,7 @@ Column {
 
     Button {
       visible: root.status.vmRunning === true && !root.status.rdpOpen
-      text: "Apagar Windows"
+      text: root.t("Apagar Windows")
       bordered: true
       foreground: root.fg
       onClicked: root.run(["usb-windows", "console-close"])

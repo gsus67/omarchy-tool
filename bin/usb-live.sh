@@ -11,9 +11,15 @@
 # a device Windows took at startup can be handed back too.
 
 set -euo pipefail
+helper_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f $helper_dir/i18n.sh ]]; then
+  source "$helper_dir/i18n.sh"
+else
+  tool_text() { printf '%s' "$1"; }
+fi
 
 fail() {
-  echo "usb-live: $*" >&2
+  printf 'usb-live: %s\n' "$(tool_text "$*")" >&2
   exit 1
 }
 
@@ -21,7 +27,7 @@ action=${1:-}
 [[ $action == attach || $action == detach ]] && (($# >= 2)) || fail "usage: usb-live.sh attach|detach VVVV:PPPP..."
 shift
 for id in "$@"; do
-  [[ $id =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "refusing device id: $id"
+  [[ $id =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "$(tool_text 'refusing device id: %1' "$id")"
 done
 
 pid=$(docker inspect --format '{{.State.Pid}}' omarchy-windows 2>/dev/null) || fail "Windows no está abierto"
@@ -63,9 +69,9 @@ move() {
     fi
   done
   if [[ $action == attach ]]; then
-    fail "Windows no tomó $id (¿está conectado?)"
+    fail "$(tool_text 'Windows no tomó %1 (¿está conectado?)' "$id")"
   fi
-  fail "Windows no soltó $id"
+  fail "$(tool_text 'Windows no soltó %1' "$id")"
 }
 
 for id in "$@"; do

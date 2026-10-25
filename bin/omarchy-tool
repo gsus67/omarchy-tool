@@ -18,6 +18,7 @@
 set -euo pipefail
 
 TOOL_DIR=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
+source "$TOOL_DIR/bin/i18n.sh"
 TOOL_VERSION=$(jq -r '.version // "0.0.0"' "$TOOL_DIR/manifest.json" 2>/dev/null || echo "0.0.0")
 CONFIG_DIR="${OMARCHY_TOOL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-tool}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -28,7 +29,7 @@ MENU_FILE="${OMARCHY_TOOL_MENU_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/e
 export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
 
 fail() {
-  echo "omarchy-tool: $*" >&2
+  printf 'omarchy-tool: %s\n' "$(tool_text "$*")" >&2
   exit 1
 }
 
@@ -57,7 +58,7 @@ config_update() {
   tmp=$(mktemp "$CONFIG_DIR/.config.json.XXXXXX")
   if ! config_read | jq "$@" "$filter" >"$tmp"; then
     rm -f -- "$tmp"
-    fail "could not update $CONFIG_FILE"
+    fail "$(tool_text 'could not update %1' "$CONFIG_FILE")"
   fi
   mv -f -- "$tmp" "$CONFIG_FILE"
 }
@@ -128,6 +129,7 @@ compose_sync() {
   local record line args=() desired
   record=$(compose_record)
   mkdir -p -- "$STATE_DIR"
+  install_helper_i18n
   install -m 0644 -- "$TOOL_DIR/bin/compose-edit.sh" "$STATE_DIR/compose-edit.sh"
 
   # v0.0.7-v0.0.10 kept shared folders alone in windows-disks.applied.
@@ -236,8 +238,19 @@ cmd_status() {
     module_json=$("$fn") || module_json='{"error":"status failed"}'
     json=$(jq --arg name "$name" --argjson value "$module_json" '.[$name] = $value' <<<"$json")
   done
-  jq -n --arg version "$TOOL_VERSION" --arg uninstaller "$STATE_DIR/uninstall.sh" --argjson modules "$json" \
-    '{version: $version, uninstaller: $uninstaller, modules: $modules}'
+  jq -n --arg version "$TOOL_VERSION" --arg language "$TOOL_LANGUAGE" --argjson labels "$(tool_catalog)" \
+    --arg uninstaller "$STATE_DIR/uninstall.sh" --argjson modules "$json" '
+    def t($source): $labels[$source] // $source;
+    def counttext($source; $n): t($source) | sub("%1"; ($n | tostring));
+    {version: $version, language: $language, uninstaller: $uninstaller, modules: $modules}
+    | .modules |= with_entries(
+      .value.summary = (
+        if (.key == "windows-disks" or .key == "usb-windows") and (.value.vmInstalled | not) then t("Windows no está instalado")
+        elif (.value.enabled | not) then t("Desactivado")
+        elif .key == "windows-disks" then counttext((if (.value.disks | length) == 1 then "Comparte %1 disco" else "Comparte %1 discos" end); (.value.disks | length))
+        elif .key == "usb-windows" then counttext("%1 en Windows"; (.value.inWindows | length))
+        elif .key == "web-devices" then counttext("%1 con acceso"; (.value.devices | length))
+        else t(.value.summary) end))'
 }
 
 # Keep a copy of the uninstaller outside the plugin folder: once `omarchy
@@ -245,6 +258,13 @@ cmd_status() {
 install_uninstaller() {
   mkdir -p -- "$STATE_DIR"
   install -m 0755 -- "$TOOL_DIR/bin/uninstall.sh" "$STATE_DIR/uninstall.sh"
+  install_helper_i18n
+}
+
+install_helper_i18n() {
+  mkdir -p -- "$STATE_DIR"
+  install -m 0644 -- "$TOOL_DIR/bin/i18n.sh" "$STATE_DIR/i18n.sh"
+  install -m 0644 -- "$TOOL_DIR/i18n/messages.json" "$STATE_DIR/messages.json"
 }
 
 # One row in the Omarchy menu that toggles the panel. Only an existing user
@@ -286,7 +306,7 @@ cmd_self_update() {
   omarchy-plugin-update omarchy-tool --yes >/dev/null 2>&1 || return 1
   local version
   version=$(jq -r '.version // ""' "$TOOL_DIR/manifest.json" 2>/dev/null)
-  omarchy-notification-send -g "󰦬" "Omarchy Tool actualizado" "Ya tienes la versión ${version:-nueva}." >/dev/null 2>&1 || true
+  omarchy-notification-send -g "󰦬" "$(tool_text 'Omarchy Tool actualizado')" "$(tool_text 'Ya tienes la versión %1.' "${version:-$(tool_text nueva)}")" >/dev/null 2>&1 || true
 }
 
 cmd_apply() {
@@ -329,11 +349,11 @@ main() {
       ;;
     *)
       local action=${1:-} fn
-      grep -qxF -- "$command" <<<"$(module_names)" || fail "unknown command or module: $command"
-      [[ -n $action ]] || fail "missing action for module $command"
+      grep -qxF -- "$command" <<<"$(module_names)" || fail "$(tool_text 'unknown command or module: %1' "$command")"
+      [[ -n $action ]] || fail "$(tool_text 'missing action for module %1' "$command")"
       shift
       fn=$(module_fn "$command" "$action")
-      has_fn "$fn" || fail "unknown action for $command: $action"
+      has_fn "$fn" || fail "$(tool_text 'unknown action for %1: %2' "$command" "$action")"
       "$fn" "$@"
       ;;
   esac

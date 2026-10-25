@@ -11,9 +11,15 @@
 # Access already granted to a device that is no longer listed is revoked.
 
 set -euo pipefail
+helper_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ -f $helper_dir/i18n.sh ]]; then
+  source "$helper_dir/i18n.sh"
+else
+  tool_text() { printf '%s' "$1"; }
+fi
 
 fail() {
-  echo "udev-webhid: $*" >&2
+  printf 'udev-webhid: %s\n' "$(tool_text "$*")" >&2
   exit 1
 }
 
@@ -29,7 +35,7 @@ fi
 
 ids=()
 for id in "$@"; do
-  [[ $id =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "refusing device id: $id"
+  [[ $id =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]] || fail "$(tool_text 'refusing device id: %1' "$id")"
   ids+=("$id")
 done
 

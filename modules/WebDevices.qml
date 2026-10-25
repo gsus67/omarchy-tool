@@ -11,6 +11,7 @@ Column {
 
   property var tool: null
   property var status: ({})
+  function t(source) { return tool ? tool.t(source) : source }
 
   readonly property color fg: tool ? tool.barForeground : Commons.Color.foreground
   readonly property bool active: status.enabled === true
@@ -27,7 +28,7 @@ Column {
     }
     for (var j = 0; j < devices.length; j++) {
       if (seen[devices[j].id]) continue
-      list.push({ id: devices[j].id, name: devices[j].name, detail: devices[j].id + " · no conectado", selected: true })
+      list.push({ id: devices[j].id, name: devices[j].name, detail: devices[j].id + root.t(" · no conectado"), selected: true })
     }
     return list
   }
@@ -41,7 +42,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    text: "Deja que el navegador configure estos dispositivos, para páginas como CORSAIR Web Hub. Solo tu sesión tiene acceso. Los cambios piden tu contraseña; después recarga la página y dale a conectar."
+    text: root.t("Deja que el navegador configure estos dispositivos, para páginas como CORSAIR Web Hub. Solo tu sesión tiene acceso. Los cambios piden tu contraseña; después recarga la página y dale a conectar.")
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -51,7 +52,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    text: "Dispositivos USB"
+    text: root.t("Dispositivos USB")
     color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
     font.pixelSize: Style.font.caption
@@ -62,7 +63,7 @@ Column {
   Text {
     textFormat: Text.PlainText
     visible: root.rows.length === 0
-    text: "No hay dispositivos USB de este tipo conectados."
+    text: root.t("No hay dispositivos USB de este tipo conectados.")
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall

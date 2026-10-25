@@ -76,6 +76,7 @@ usb_windows_compose_args() {
 
 usb_windows_apply() {
   mkdir -p -- "$STATE_DIR"
+  install_helper_i18n
   install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
   hotkeys_sync
   compose_sync || fail "no se pudo cambiar la configuración de Windows"
@@ -110,7 +111,8 @@ usb_windows_check_request() {
 # dont_inhibit: it works even while the Windows window holds the keyboard.
 usb_windows_hotkeys() {
   usb_windows_enabled || return 0
-  printf 'o.bind("SUPER + ALT + U", "Devolver periféricos a Linux", %s, { dont_inhibit = true })\n' \
+  printf 'o.bind("SUPER + ALT + U", %s, %s, { dont_inhibit = true })\n' \
+    "$(jq -Rn --arg text "$(tool_text 'Devolver periféricos a Linux')" '$text')" \
     "$(jq -Rn --arg cmd "$(printf '%q' "$TOOL_DIR/bin/omarchy-tool") usb-windows move linux --all" '$cmd')"
 }
 
@@ -158,7 +160,9 @@ usb_windows_in_windows() {
 }
 
 usb_windows_notify() {
-  omarchy-notification-send -g "󰦬" "$@" >/dev/null 2>&1 || true
+  local translated=() value
+  for value in "$@"; do translated+=("$(tool_text "$value")"); done
+  omarchy-notification-send -g "󰦬" "${translated[@]}" >/dev/null 2>&1 || true
 }
 
 # Hand <ids> to Windows (attach) or back to Linux (detach) in one pkexec call,
@@ -168,6 +172,7 @@ usb_windows_live() {
   shift 2
   (($#)) || return 0
   mkdir -p -- "$STATE_DIR"
+  install_helper_i18n
   install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
   privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "$@" || return 1
   state=$(usb_windows_live_state)
@@ -237,7 +242,7 @@ usb_windows_move() {
       usb_windows_notify -u critical "No se pudieron devolver los periféricos" "Prueba otra vez o cierra Windows."
       fail "no se pudo devolver los dispositivos"
     fi
-    usb_windows_notify "Periféricos devueltos a Linux" "${#ids[@]} dispositivo(s) de vuelta; su interruptor queda apagado."
+    usb_windows_notify "Periféricos devueltos a Linux" "$(tool_text '%1 dispositivo(s) de vuelta; su interruptor queda apagado.' "${#ids[@]}")"
     return 0
   fi
 
@@ -359,7 +364,7 @@ usb_windows_add() {
   id=${id,,}
   usb_windows_valid_id "$id" || fail "usage: omarchy-tool usb-windows add <vvvv:pppp> [name]"
   count=$(config_get '[.modules["usb-windows"].devices // [] | .[] | select(.id != $id)] | length' --arg id "$id")
-  ((count < USB_WINDOWS_MAX)) || fail "máximo $USB_WINDOWS_MAX dispositivos; quita uno antes"
+  ((count < USB_WINDOWS_MAX)) || fail "$(tool_text 'máximo %1 dispositivos; quita uno antes' "$USB_WINDOWS_MAX")"
   if [[ -z $name ]]; then
     name=$(usb_windows_connected_json | jq -r --arg id "$id" '.[] | select(.id == $id) | .name')
   fi

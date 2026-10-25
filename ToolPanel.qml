@@ -29,6 +29,7 @@ Panel {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
+    function language(): string { return root.language }
     function page(id: string): void {
       for (var i = 0; i < root.modules.length; i++) {
         if (root.modules[i].id === id) {
@@ -43,13 +44,23 @@ Panel {
   // Listed in this order, under a header per group; keep a group's modules
   // next to each other.
   readonly property var modules: [
-    { id: "windows-disks", group: "Windows", title: "Discos en Windows", source: "modules/WindowsDisks.qml" },
-    { id: "usb-windows", group: "Windows", title: "Periféricos en Windows", hint: "SUPER + ALT + U: devolver todo a Linux", source: "modules/UsbWindows.qml" },
-    { id: "web-devices", group: "Navegador", title: "Periféricos en navegador", source: "modules/WebDevices.qml" }
+    { id: "windows-disks", group: "Windows", title: root.t("Discos en Windows"), source: "modules/WindowsDisks.qml" },
+    { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
+    { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" }
   ]
 
   readonly property string toolPath: decodeURIComponent(String(Qt.resolvedUrl("bin/omarchy-tool")).replace(/^file:\/\//, ""))
   property var status: ({})
+  property var translations: ({})
+  readonly property string language: (Quickshell.env("LC_ALL") || Quickshell.env("LC_MESSAGES") || Quickshell.env("LANG") || Qt.locale().name).toLowerCase().split(/[_.-]/)[0] === "es" ? "es" : "en"
+  function t(source) {
+    var catalog = translations[language] || ({})
+    return catalog[source] || source
+  }
+  FileView {
+    path: root.toolPath.replace(/\/bin\/omarchy-tool$/, "/i18n/messages.json")
+    onLoaded: { try { root.translations = JSON.parse(text()) } catch (e) { root.translations = ({}) } }
+  }
   property string error: ""
   property bool busy: false
   property var queue: []
@@ -192,7 +203,7 @@ Panel {
         try {
           root.status = JSON.parse(text)
         } catch (e) {
-          root.error = "No se pudo leer el estado del plugin"
+          root.error = root.t("No se pudo leer el estado del plugin")
         }
       }
     }
@@ -265,7 +276,7 @@ Panel {
               id: backButton
               visible: root.current !== null
               iconText: "󰁍"
-              tooltipText: "Volver"
+              tooltipText: root.t("Volver")
               foreground: root.barForeground
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter

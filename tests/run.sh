@@ -7,13 +7,18 @@
 #   tests/run.sh
 
 set -uo pipefail
+unset LC_ALL LC_MESSAGES
+export LANG=es
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tool="$repo/bin/omarchy-tool"
 # Shared folders must live under /home, /mnt, /media or /run/media.
-mkdir -p "$HOME/.cache"
-work=$(mktemp -d "$HOME/.cache/omarchy-tool-test.XXXXXX")
+test_parent=${OMARCHY_TOOL_TEST_PARENT:-$HOME/.cache}
+mkdir -p "$test_parent"
+work=$(mktemp -d "$test_parent/omarchy-tool-test.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
+export XDG_RUNTIME_DIR="$work/runtime"
+mkdir -m 700 "$XDG_RUNTIME_DIR"
 
 export OMARCHY_TOOL_CONFIG_DIR="$work/config"
 export OMARCHY_TOOL_STATE_DIR="$work/my state"

@@ -4,6 +4,10 @@
 # "Activar discos.cmd" or "Quitar discos.cmd" next to this file.
 param([ValidateSet('activar', 'quitar')][string]$Accion = 'activar')
 
+function T([string]$Spanish, [string]$English) {
+  if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'es') { $Spanish } else { $English }
+}
+
 $here = $PSScriptRoot
 $desktop = [Environment]::GetFolderPath('Desktop')
 $shell = New-Object -ComObject WScript.Shell
@@ -30,7 +34,7 @@ Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
 
 if ($Accion -eq 'activar') {
   if (-not $active) {
-    Write-Host 'Omarchy Tool no está compartiendo discos ahora mismo.'
+    Write-Host (T 'Omarchy Tool no está compartiendo discos ahora mismo.' 'Omarchy Tool is not sharing any disks right now.')
     return
   }
   foreach ($line in Get-Content -LiteralPath (Join-Path $here 'discos.txt')) {
@@ -38,7 +42,7 @@ if ($Accion -eq 'activar') {
     if (-not $name) { continue }
     net use "${letter}:" $share /persistent:yes *> $null
     if ($LASTEXITCODE -ne 0) {
-      Write-Host "$name -> ${letter}: no se pudo (¿letra ocupada?)"
+      Write-Host (T "$name -> ${letter}: no se pudo (¿letra ocupada?)" "$name -> ${letter}: failed (drive letter already in use?)")
       continue
     }
     $key = Join-Path $labels ($share -replace '\\', '#')
@@ -52,9 +56,9 @@ if ($Accion -eq 'activar') {
   }
   Set-Content -LiteralPath $marker -Value 'ok'
   Write-Host ''
-  Write-Host 'Listo. Windows recordará estas letras cada vez que lo abras.'
+  Write-Host (T 'Listo. Windows recordará estas letras cada vez que lo abras.' 'Done. Windows will remember these drive letters when you reopen it.')
 } else {
-  Write-Host 'Letras y accesos de Omarchy Tool quitados.'
+  Write-Host (T 'Letras y accesos de Omarchy Tool quitados.' 'Omarchy Tool drive letters and shortcuts removed.')
   if (-not $active) {
     # The disks are off or the plugin is gone: leave nothing of this behind,
     # here or in Windows. Other features' files in this folder stay.

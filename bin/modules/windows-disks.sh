@@ -204,17 +204,17 @@ windows_disks_add() {
   local path=${1:-} name=${2:-} count
   [[ -n $path ]] || fail "usage: omarchy-tool windows-disks add <path> [name]"
   path=$(windows_disks_normalize "$path")
-  windows_disks_valid_path "$path" || fail "solo se pueden compartir carpetas de /mnt, /media, /run/media o /home: $path"
-  [[ -d $path ]] || fail "no existe la carpeta: $path"
-  [[ $(realpath -e -- "$path") == "$path" ]] || fail "la ruta pasa por un enlace; usa la ruta real: $(realpath -e -- "$path")"
+  windows_disks_valid_path "$path" || fail "$(tool_text 'solo se pueden compartir carpetas de /mnt, /media, /run/media o /home: %1' "$path")"
+  [[ -d $path ]] || fail "$(tool_text 'no existe la carpeta: %1' "$path")"
+  [[ $(realpath -e -- "$path") == "$path" ]] || fail "$(tool_text 'la ruta pasa por un enlace; usa la ruta real: %1' "$(realpath -e -- "$path")")"
   count=$(config_get '[.modules["windows-disks"].disks // [] | .[] | select(.path != $path)] | length' --arg path "$path")
-  ((count < WINDOWS_DISKS_MAX)) || fail "máximo $WINDOWS_DISKS_MAX discos; quita uno antes"
+  ((count < WINDOWS_DISKS_MAX)) || fail "$(tool_text 'máximo %1 discos; quita uno antes' "$WINDOWS_DISKS_MAX")"
   if [[ -z $name ]]; then
     name=$(findmnt -no LABEL --target "$path" 2>/dev/null | head -n1 || true)
     [[ -n $name && $(findmnt -no TARGET --target "$path" | head -n1) == "$path" ]] || name=$(basename -- "$path")
   fi
   name=$(tr -c 'A-Za-z0-9 ._\n-' '_' <<<"$name" | head -c 32)
-  windows_disks_valid_name "$name" || fail "invalid name: $name"
+  windows_disks_valid_name "$name" || fail "$(tool_text 'invalid name: %1' "$name")"
   local letter
   letter=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path == $path) | .letter // empty' --arg path "$path")
   [[ -n $letter ]] || letter=$(windows_disks_free_letter "$path") || fail "no quedan letras libres"
@@ -234,7 +234,7 @@ windows_disks_letter() {
   [[ -n $path && -n $letter ]] || fail "usage: omarchy-tool windows-disks letter <path> <D-Y|next>"
   path=$(windows_disks_normalize "$path")
   current=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path == $path) | .letter // "X"' --arg path "$path")
-  [[ -n $current ]] || fail "ese disco no está marcado: $path"
+  [[ -n $current ]] || fail "$(tool_text 'ese disco no está marcado: %1' "$path")"
   if [[ $letter == next ]]; then
     local taken pos
     taken=$(config_get -r '.modules["windows-disks"].disks // [] | .[] | select(.path != $path) | .letter // empty' --arg path "$path")
@@ -246,9 +246,9 @@ windows_disks_letter() {
   fi
   letter=${letter^^}
   letter=${letter%:}
-  [[ $letter =~ ^[D-Y]$ ]] || fail "letra no válida: $letter (de D a Y; Z es la de Omarchy)"
+  [[ $letter =~ ^[D-Y]$ ]] || fail "$(tool_text 'letra no válida: %1 (de D a Y; Z es la de Omarchy)' "$letter")"
   config_get -e 'any(.modules["windows-disks"].disks // [] | .[]; .path != $path and .letter == $letter) | not' \
-    --arg path "$path" --arg letter "$letter" >/dev/null || fail "la letra $letter: ya la usa otro disco"
+    --arg path "$path" --arg letter "$letter" >/dev/null || fail "$(tool_text 'la letra %1: ya la usa otro disco' "$letter")"
   config_update '.modules["windows-disks"].disks |= map(if .path == $path then .letter = $letter else . end)' \
     --arg path "$path" --arg letter "$letter"
   windows_disks_sync_windows_folder
