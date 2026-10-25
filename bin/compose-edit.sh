@@ -11,12 +11,16 @@
 #   --usb    up to 4 USB devices handed to Windows while the VM runs: a
 #            "-device usb-host" in ARGUMENTS plus /dev/bus/usb in devices, as
 #            dockurr/windows documents for USB passthrough.
-#   --usb-bus on  only /dev/bus/usb, so devices can be handed to the running
-#            VM on demand (usb-live.sh) without any being taken at boot.
+#   --usb-bus on  only USB access, so devices can be handed to the running VM
+#            on demand (usb-live.sh) without any being taken at boot. It is a
+#            live bind of /dev/bus/usb plus a cgroup rule for USB devices
+#            (char major 189), not a `devices:` copy: QEMU resets a device it
+#            takes and it comes back under a new number, which a copy made at
+#            container start would not have.
 #
 # No options removes all of it. Only our own pieces are ever touched: the
-# /shared2 and /shared3 binds, the usb-host devices in ARGUMENTS and the
-# "/dev/bus/usb # omarchy-tool" line. Everything else is copied as is.
+# /shared2 and /shared3 binds, the usb-host devices in ARGUMENTS and lines
+# ending in "# omarchy-tool". Everything else is copied as is.
 
 set -euo pipefail
 
@@ -71,8 +75,8 @@ done
   fail "unexpected compose layout (/shared)"
 ((${#usbs[@]})) && usb_bus=true
 if [[ $usb_bus == true ]]; then
-  [[ $(grep -c '^[[:space:]]*-[[:space:]]*/dev/net/tun[[:space:]]*$' "$compose") == 1 ]] ||
-    fail "unexpected compose layout (devices)"
+  [[ $(grep -c '^    volumes:[[:space:]]*$' "$compose") == 1 ]] ||
+    fail "unexpected compose layout (volumes)"
 fi
 if ((${#usbs[@]})); then
   [[ $(grep -c '^[[:space:]]*ARGUMENTS:[[:space:]]*".*"[[:space:]]*$' "$compose") == 1 ]] ||
@@ -100,7 +104,14 @@ trap 'rm -f -- "$tmp"' EXIT
 awk -v shares="$share_rows" -v usb_args="$usb_args" -v usb_bus="$usb_bus" '
   # Ours from an earlier run: dropped, then written again below if wanted.
   /^[[:space:]]*-[[:space:]]*"?[^[:space:]].*:\/shared[23]"?[[:space:]]*$/ { next }
-  /^[[:space:]]*-[[:space:]]*\/dev\/bus\/usb[[:space:]]+# omarchy-tool[[:space:]]*$/ { next }
+  /# omarchy-tool[[:space:]]*$/ { next }
+  /^    volumes:[[:space:]]*$/ && usb_bus == "true" {
+    print "    device_cgroup_rules: # omarchy-tool"
+    print "      - \"c 189:* rwm\" # omarchy-tool"
+    print
+    print "      - /dev/bus/usb:/dev/bus/usb # omarchy-tool"
+    next
+  }
   /^[[:space:]]*ARGUMENTS:[[:space:]]*".*"[[:space:]]*$/ {
     gsub(/ -device usb-host,(id=omt[0-9a-f]+,)?vendorid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f],productid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f]/, "")
     if (usb_args != "") sub(/"[[:space:]]*$/, usb_args "\"")
@@ -109,10 +120,6 @@ awk -v shares="$share_rows" -v usb_args="$usb_args" -v usb_bus="$usb_bus" '
   }
   { print }
   /^[[:space:]]*-[[:space:]]*[^[:space:]].*:\/shared$/ && shares != "" { print shares }
-  /^[[:space:]]*-[[:space:]]*\/dev\/net\/tun[[:space:]]*$/ && usb_bus == "true" {
-    match($0, /^[[:space:]]*/)
-    print substr($0, 1, RLENGTH) "- /dev/bus/usb # omarchy-tool"
-  }
 ' "$compose" >"$tmp"
 
 chmod --reference="$compose" -- "$tmp"

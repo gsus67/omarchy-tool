@@ -251,7 +251,10 @@ check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 3 ]
 check "a device switch while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
 "$tool" usb-windows enable
 check "enable leaves ARGUMENTS alone (nothing taken at boot)" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
-check "enable adds /dev/bus/usb after /dev/net/tun" '[[ $(grep -A1 "/dev/net/tun$" "$compose" | tail -n1) == "      - /dev/bus/usb # omarchy-tool" ]]'
+check "enable binds /dev/bus/usb live" 'grep -qxF "      - /dev/bus/usb:/dev/bus/usb # omarchy-tool" "$compose"'
+check "enable allows USB devices that appear later" 'grep -B2 "^    volumes:$" "$compose" | grep -qxF "      - \"c 189:* rwm\" # omarchy-tool" && grep -qxF "    device_cgroup_rules: # omarchy-tool" "$compose"'
+check "Omarchy mounts still counted right" '[[ $(grep -c ":/shared$" "$compose") == 1 && $(grep -c ":/storage$" "$compose") == 1 ]]'
+check "old devices: copy from v0.0.12-v0.0.23 is dropped" 'sed -i "s|^      - /dev/net/tun$|&\n      - /dev/bus/usb # omarchy-tool|" "$compose" && bash "$repo/bin/compose-edit.sh" --usb-bus on && ! grep -qxF "      - /dev/bus/usb # omarchy-tool" "$compose" && [[ $(grep -c "/dev/bus/usb:/dev/bus/usb" "$compose") == 1 ]] && touch -d "+3 seconds" "$compose" && "$tool" apply'
 check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "0 en Windows" ]]'
 check "status tells the panel what to run" '[[ $(wu .watcher) == "$repo/bin/usb-watch.sh" && $(wu .requestFile) == "$usbfolder/.devolver-usb" ]]'
 before=$(md5sum <"$compose")
@@ -262,7 +265,7 @@ check "device switches never touch the compose" '[[ $(md5sum <"$compose") == "$b
 # Disks and USB live side by side; one change never drops the other.
 "$tool" windows-disks add "$work/disk-a" DiskA
 "$tool" windows-disks enable
-check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "/dev/bus/usb # omarchy-tool" "$compose"'
+check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "/dev/bus/usb:/dev/bus/usb # omarchy-tool" "$compose"'
 check "both modules report applied" '[[ $(wu .applied) == true && $(wd .applied) == true ]]'
 "$tool" usb-windows disable
 check "usb off keeps the disks" 'grep -q ":/shared2\"$" "$compose" && ! grep -q "/dev/bus/usb" "$compose"'
@@ -310,7 +313,7 @@ chmod +x "$fake_bin3"/*
 check "refused while the normal Windows window is open" '! OMARCHY_TOOL_RDP_OPEN=1 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open 2>/dev/null && [[ ! -e $work/vm.log ]]'
 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3
 check "starts Windows kept alive, without the remote window" 'grep -q "^vm launch --keep-alive path=$repo/bin/no-rdp:" "$work/vm.log"'
-check "opens the Windows screen as a web app" 'grep -q "^webapp http://.*127.0.0.1:8006/$" "$work/vm.log"'
+check "opens the Windows screen fitted to the window" 'grep -q "^webapp http://.*127.0.0.1:8006/?resize=scale$" "$work/vm.log"'
 check "no-op RDP shim exits cleanly" 'bash "$repo/bin/no-rdp/xfreerdp3" /v:x'
 rm -f "$work/vm.log"
 OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3

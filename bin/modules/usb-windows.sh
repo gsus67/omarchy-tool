@@ -271,9 +271,10 @@ usb_windows_console_open() {
   # The viewer is behind the same user and password as Windows itself.
   user=$(sed -n 's/^USERNAME=//p' "$HOME/.config/windows/credentials" 2>/dev/null | head -n1)
   pass=$(sed -n 's/^PASSWORD=//p' "$HOME/.config/windows/credentials" 2>/dev/null | head -n1)
-  url="http://127.0.0.1:8006/"
+  # resize=scale: noVNC fits the Windows screen to the window.
+  url="http://127.0.0.1:8006/?resize=scale"
   if [[ -n $user && -n $pass ]]; then
-    url="http://$(jq -rn --arg v "$user" '$v|@uri'):$(jq -rn --arg v "$pass" '$v|@uri')@127.0.0.1:8006/"
+    url="http://$(jq -rn --arg v "$user" '$v|@uri'):$(jq -rn --arg v "$pass" '$v|@uri')@127.0.0.1:8006/?resize=scale"
   fi
   omarchy-launch-webapp "$url" >/dev/null 2>&1 &
   disown
