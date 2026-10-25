@@ -58,7 +58,7 @@ deshace y, si el plugin está apagado o eliminado, se borra a sí mismo.
 Cómo funciona: la imagen `dockurr/windows` que usa Omarchy sirve `/shared2` y
 `/shared3` si existen. El plugin añade esas dos líneas a la configuración de la
 VM (`/var/lib/omarchy/windows/docker-compose.yml`, de root) con
-`bin/compose-shares.sh` vía `pkexec`, así que cada cambio pide tu contraseña y
+`bin/compose-edit.sh` vía `pkexec`, así que cada cambio pide tu contraseña y
 se ve al volver a abrir Windows. Ese script solo toca esas dos líneas y valida
 las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
 
@@ -82,6 +82,20 @@ Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
 dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
 vayas a configurar y desmárcalo al terminar si quieres.
 
+### USB a Windows
+
+Pasa los dispositivos USB que marques a la VM de Windows de Omarchy mientras
+está abierta, para usar apps que solo existen en Windows (por ejemplo
+**Glorious CORE** con un ratón Glorious Model O 2). Windows los ve como si
+estuvieran enchufados a él; **mientras Windows esté abierto, Linux no los
+tiene**, y vuelven a Linux al cerrarlo. Máximo 4 dispositivos.
+
+Es el método que documenta `dockurr/windows`: `-device usb-host,...` en
+`ARGUMENTS` y `/dev/bus/usb` en `devices` de la configuración de la VM. Lo
+escribe el mismo `bin/compose-edit.sh` que los discos, en una sola llamada con
+`pkexec`, y se ve al volver a abrir Windows. Al apagarlo, la configuración
+vuelve a quedar como estaba.
+
 ## Línea de comandos
 
 El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
@@ -97,6 +111,9 @@ omarchy-tool windows-disks letter /mnt/datos X   # o "next"
 omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
+omarchy-tool usb-windows enable|disable
+omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
+omarchy-tool usb-windows remove 093a:822a
 ```
 
 ## Añadir un módulo

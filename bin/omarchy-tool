@@ -22,6 +22,7 @@ TOOL_VERSION=$(jq -r '.version // "0.0.0"' "$TOOL_DIR/manifest.json" 2>/dev/null
 CONFIG_DIR="${OMARCHY_TOOL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-tool}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 STATE_DIR="${OMARCHY_TOOL_STATE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tool}"
+COMPOSE_FILE="${OMARCHY_TOOL_COMPOSE:-/var/lib/omarchy/windows/docker-compose.yml}"
 MENU_FILE="${OMARCHY_TOOL_MENU_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc}"
 export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
 
@@ -67,6 +68,92 @@ privileged() {
     ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} "$@"
   else
     pkexec "$@"
+  fi
+}
+
+# --- Windows VM compose --------------------------------------------------------
+#
+# Several modules add to Omarchy's root-owned Windows VM compose (shared disks,
+# USB devices). bin/compose-edit.sh writes all of it in one pkexec call, so
+# modules never undo each other or ask for the password twice. A module offers
+# <module>_compose_args (one "--share X" / "--usb Y" pair per line).
+#
+# $STATE_DIR/compose.applied keeps the compose mtime after our write and the
+# args written, so nothing is rewritten (and no password asked) while both
+# match, and a compose Omarchy regenerated (Windows reinstalled) gets ours back.
+
+compose_record() {
+  echo "$STATE_DIR/compose.applied"
+}
+
+compose_mtime() {
+  stat -c %Y -- "$COMPOSE_FILE" 2>/dev/null || echo 0
+}
+
+compose_desired() {
+  local name fn
+  for name in $(module_names); do
+    fn=$(module_fn "$name" compose_args)
+    has_fn "$fn" && "$fn"
+  done
+  return 0
+}
+
+# Args currently in the compose, or nothing if it changed behind our back.
+compose_applied() {
+  local record
+  record=$(compose_record)
+  [[ -f $record && $(head -n1 "$record") == "$(compose_mtime)" ]] || return 0
+  tail -n +2 "$record"
+}
+
+# compose_in_sync [--share|--usb]: whether that part (or all) is applied.
+compose_in_sync() {
+  local kind=${1:-} desired applied
+  desired=$(compose_desired)
+  if [[ -z $kind && -z $desired ]]; then
+    [[ ! -e $(compose_record) ]]
+    return
+  fi
+  applied=$(compose_applied)
+  if [[ -n $kind ]]; then
+    desired=$(grep -x -- "$kind .*" <<<"$desired" || true)
+    applied=$(grep -x -- "$kind .*" <<<"$applied" || true)
+  fi
+  [[ $desired == "$applied" ]]
+}
+
+compose_sync() {
+  local record line args=() desired
+  record=$(compose_record)
+  mkdir -p -- "$STATE_DIR"
+  install -m 0644 -- "$TOOL_DIR/bin/compose-edit.sh" "$STATE_DIR/compose-edit.sh"
+
+  # v0.0.7-v0.0.10 kept shared folders alone in windows-disks.applied.
+  if [[ -f $STATE_DIR/windows-disks.applied ]]; then
+    if [[ ! -e $record ]]; then
+      { head -n1 "$STATE_DIR/windows-disks.applied"; tail -n +2 "$STATE_DIR/windows-disks.applied" | sed 's/^/--share /'; } >"$record"
+    fi
+    rm -f -- "$STATE_DIR/windows-disks.applied" "$STATE_DIR/compose-shares.sh"
+  fi
+
+  # No VM: nothing to add to, and nothing of ours can be in a compose.
+  if [[ ! -f $COMPOSE_FILE ]]; then
+    rm -f -- "$record"
+    return 0
+  fi
+  compose_in_sync && return 0
+
+  desired=$(compose_desired)
+  while IFS= read -r line; do
+    [[ -n $line ]] && args+=("${line%% *}" "${line#* }")
+  done <<<"$desired"
+  privileged /usr/bin/bash "$STATE_DIR/compose-edit.sh" "${args[@]}" || return 1
+
+  if [[ -n $desired ]]; then
+    { compose_mtime; printf '%s\n' "$desired"; } >"$record"
+  else
+    rm -f -- "$record"
   fi
 }
 

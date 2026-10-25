@@ -19,13 +19,19 @@ config_dir="${OMARCHY_TOOL_CONFIG_DIR:-$config_home/omarchy-tool}"
 desktop="${OMARCHY_TOOL_APPLICATIONS_DIR:-$data_home/applications}/windows-vm.desktop"
 menu="${OMARCHY_TOOL_MENU_FILE:-$config_home/omarchy/extensions/omarchy-menu.jsonc}"
 
-# Disks shared with the Windows VM live in Omarchy's root-owned compose;
-# taking them out needs the password once.
-if [[ -f $state_dir/windows-disks.applied && -f $state_dir/compose-shares.sh ]]; then
+# What we added to the Windows VM (shared disks, USB devices) lives in
+# Omarchy's root-owned compose; taking it out needs the password once.
+editor=''
+if [[ -f $state_dir/compose.applied && -f $state_dir/compose-edit.sh ]]; then
+  editor="$state_dir/compose-edit.sh"
+elif [[ -f $state_dir/windows-disks.applied && -f $state_dir/compose-shares.sh ]]; then
+  editor="$state_dir/compose-shares.sh" # v0.0.7-v0.0.10
+fi
+if [[ -n $editor ]]; then
   if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
-    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$state_dir/compose-shares.sh" || true
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$editor" || true
   else
-    pkexec /usr/bin/bash "$state_dir/compose-shares.sh" || true
+    pkexec /usr/bin/bash "$editor" || true
   fi
 fi
 

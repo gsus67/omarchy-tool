@@ -5,19 +5,15 @@
 # Omarchy shares ~/Windows: as Samba folders on \\host.lan (Data2 and Data3),
 # which Windows can give a drive letter. dockurr/windows serves /shared2 and
 # /shared3 when they are mounted, so this module adds those two bind lines to
-# Omarchy's root-owned compose through bin/compose-shares.sh under pkexec.
-# Changes reach Windows the next time the VM starts.
+# Omarchy's root-owned compose (compose_sync in bin/omarchy-tool, through
+# bin/compose-edit.sh under pkexec). Changes reach Windows the next time the
+# VM starts.
 #
 # Drive letters: Windows only maps \\host.lan\Data to Z: once, at install. For
 # ours the module drops "Omarchy Tool" into that same Shared folder (~/Windows)
 # with "Activar discos" (the same `net use ... /persistent:yes` plus a desktop
 # shortcut) and "Quitar discos", which the user runs once inside Windows.
-#
-# The last applied folders and the compose mtime are kept in
-# $STATE_DIR/windows-disks.applied, so apply only asks for the password when
-# something changed (including Omarchy rewriting the compose on reinstall).
 
-WINDOWS_DISKS_COMPOSE="${OMARCHY_TOOL_COMPOSE:-/var/lib/omarchy/windows/docker-compose.yml}"
 WINDOWS_DISKS_DESKTOP="${OMARCHY_TOOL_APPLICATIONS_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/applications}/windows-vm.desktop"
 WINDOWS_DISKS_MAX=2
 WINDOWS_DISKS_SHARED="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}"
@@ -27,16 +23,12 @@ windows_disks_enabled() {
   [[ $(config_get '.modules["windows-disks"].enabled // false') == true ]]
 }
 
-windows_disks_record() {
-  echo "$STATE_DIR/windows-disks.applied"
-}
-
 # Disk names are only labels in the panel; keep them to safe characters.
 windows_disks_valid_name() {
   [[ $1 =~ ^[A-Za-z0-9._-][A-Za-z0-9\ ._-]{0,31}$ ]]
 }
 
-# Same rule compose-shares.sh enforces as root.
+# Same rule compose-edit.sh enforces as root.
 windows_disks_valid_path() {
   [[ $1 =~ ^/(mnt|media|run/media|home)/[^\"\\:,#$'\n']+$ ]] &&
     [[ $1 != */.. && $1 != */../* && $1 != */. && $1 != */./* ]]
@@ -81,6 +73,10 @@ windows_disks_desired() {
   config_get -r '.modules["windows-disks"].disks // [] | .[] | .path' | head -n "$WINDOWS_DISKS_MAX"
 }
 
+windows_disks_compose_args() {
+  windows_disks_desired | sed 's/^/--share /'
+}
+
 # Free letter for a new disk: the first of X, Y, W, ... not taken by another
 # saved disk (Z: is Omarchy's own Shared).
 windows_disks_free_letter() {
@@ -98,7 +94,7 @@ windows_disks_free_letter() {
 # (.letras-puestas, written by Activar), or nothing at all.
 windows_disks_sync_windows_folder() {
   local folder="$WINDOWS_DISKS_SHARED/Omarchy Tool" index=2 letter name path
-  if [[ $(windows_disks_desired) != "" && -f $WINDOWS_DISKS_COMPOSE && -d $WINDOWS_DISKS_SHARED ]]; then
+  if [[ $(windows_disks_desired) != "" && -f $COMPOSE_FILE && -d $WINDOWS_DISKS_SHARED ]]; then
     mkdir -p -- "$folder"
     cp -f -- "$TOOL_DIR/windows/omarchy-tool.ps1" "$TOOL_DIR/windows/Activar discos.cmd" \
       "$TOOL_DIR/windows/Quitar discos.cmd" "$folder/"
@@ -117,28 +113,6 @@ windows_disks_retire_windows_folder() {
   local folder=$1
   rm -f -- "$folder/.plugin-activo" "$folder/Activar discos.cmd" "$folder/discos.txt"
   [[ -e $folder/.letras-puestas ]] || rm -rf -- "$folder"
-}
-
-windows_disks_compose_mtime() {
-  stat -c %Y -- "$WINDOWS_DISKS_COMPOSE" 2>/dev/null || echo 0
-}
-
-# Record: first line the compose mtime after our write, then one folder per line.
-windows_disks_record_matches() {
-  local record desired
-  record=$(windows_disks_record)
-  desired=$(windows_disks_desired)
-  if [[ -z $desired ]]; then
-    [[ ! -e $record ]]
-    return
-  fi
-  [[ -f $record ]] || return 1
-  [[ $(head -n1 "$record") == "$(windows_disks_compose_mtime)" ]] || return 1
-  [[ $(tail -n +2 "$record") == "$desired" ]]
-}
-
-windows_disks_write_compose() {
-  privileged /usr/bin/bash "$STATE_DIR/compose-shares.sh" "$@"
 }
 
 # v0.0.1-v0.0.6 shared disks over RDP through a launcher in windows-vm.desktop.
@@ -168,44 +142,17 @@ windows_disks_fill_letters() {
 }
 
 windows_disks_apply() {
-  local record folders=()
-  record=$(windows_disks_record)
   windows_disks_cleanup_rdp
   windows_disks_fill_letters
-
-  mkdir -p -- "$STATE_DIR"
-  install -m 0644 -- "$TOOL_DIR/bin/compose-shares.sh" "$STATE_DIR/compose-shares.sh"
-
-  # No VM: nothing to share with, and nothing of ours can be in a compose.
-  if [[ ! -f $WINDOWS_DISKS_COMPOSE ]]; then
-    rm -f -- "$record"
-    windows_disks_sync_windows_folder
-    return 0
-  fi
-
-  if windows_disks_record_matches; then
-    windows_disks_sync_windows_folder
-    return 0
-  fi
-
-  mapfile -t folders < <(windows_disks_desired)
-  windows_disks_write_compose "${folders[@]}" || fail "no se pudo cambiar la configuración de Windows"
-
-  if ((${#folders[@]})); then
-    { windows_disks_compose_mtime; printf '%s\n' "${folders[@]}"; } >"$record"
-  else
-    # Off leaves nothing of this module on the system; only the disk choices
-    # in the config survive, so switching back on remembers them.
-    rm -f -- "$record"
-  fi
+  compose_sync || fail "no se pudo cambiar la configuración de Windows"
   windows_disks_sync_windows_folder
 }
 
 windows_disks_status() {
   local installed=false enabled=false applied=false disks='[]' candidates index=2
-  [[ -f $WINDOWS_DISKS_COMPOSE ]] && installed=true
+  [[ -f $COMPOSE_FILE ]] && installed=true
   windows_disks_enabled && enabled=true
-  windows_disks_record_matches && applied=true
+  compose_in_sync --share && applied=true
 
   local name path letter available
   while IFS= read -r -d '' name && IFS= read -r -d '' path && IFS= read -r -d '' letter; do

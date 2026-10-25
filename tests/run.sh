@@ -24,6 +24,18 @@ export OMARCHY_TOOL_PRIV=""
 export OMARCHY_TOOL_WINDOWS_SHARED="$work/Windows"
 export OMARCHY_TOOL_UDEV_RULES="$work/70-omarchy-tool-webhid.rules"
 export OMARCHY_TOOL_HIDRAW_SYS="$work/sys"
+export OMARCHY_TOOL_USB_SYS="$work/usb"
+fake_usb() {
+  mkdir -p "$OMARCHY_TOOL_USB_SYS/$1"
+  printf '%s\n' "$2" >"$OMARCHY_TOOL_USB_SYS/$1/idVendor"
+  printf '%s\n' "$3" >"$OMARCHY_TOOL_USB_SYS/$1/idProduct"
+  printf '%s\n' "$4" >"$OMARCHY_TOOL_USB_SYS/$1/bDeviceClass"
+  printf '%s\n' "$5" >"$OMARCHY_TOOL_USB_SYS/$1/manufacturer"
+  printf '%s\n' "$6" >"$OMARCHY_TOOL_USB_SYS/$1/product"
+}
+fake_usb 1-3 093a 822a 00 GLORIOUS "Model O 2 Wireless"
+fake_usb 1-4 1b1c 2b0d 00 Corsair "CORSAIR VANGUARD 96"
+fake_usb usb1 1d6b 0002 09 Linux "xHCI Host Controller"
 fake_hid() {
   mkdir -p "$OMARCHY_TOOL_HIDRAW_SYS/$1/device"
   printf 'HID_ID=%s\nHID_NAME=%s\n' "$2" "$3" >"$OMARCHY_TOOL_HIDRAW_SYS/$1/device/uevent"
@@ -50,6 +62,12 @@ cat >"$compose" <<'EOF'
 services:
   windows:
     image: dockurr/windows
+    environment:
+      VERSION: "11"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
     volumes:
       - /var/lib/omarchy/windows/mounts/users/1000/storage:/storage
       - /var/lib/omarchy/windows/mounts/users/1000/shared:/shared
@@ -140,7 +158,7 @@ touch "$winfolder/.letras-puestas"
 check "status sees letters set in Windows" '[[ $(wd .lettersSet) == true ]]'
 "$tool" windows-disks disable
 check "disable restores the compose" 'cmp -s "$compose" "$work/compose-original"'
-check "disable removes the record" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied ]]'
+check "disable removes the record" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]]'
 check "disable keeps disk choices" '[[ $(wd ".disks | length") == 2 ]]'
 check "disable leaves only Quitar while Windows has letters" '[[ -f "$winfolder/Quitar discos.cmd" && -f $winfolder/omarchy-tool.ps1 && ! -e "$winfolder/Activar discos.cmd" && ! -e $winfolder/.plugin-activo ]]'
 rm -f "$winfolder/.letras-puestas"
@@ -158,10 +176,10 @@ check "failed write changes nothing" 'cmp -s "$compose" "$work/compose-original"
 "$tool" windows-disks disable
 
 # The root writer refuses anything else, even when called directly.
-check "writer refuses three folders" '! bash "$repo/bin/compose-shares.sh" "$work/disk-a" "$work/disk b" "$work/disk-c" 2>/dev/null'
-check "writer refuses dot-dot paths" '! bash "$repo/bin/compose-shares.sh" "/home/../etc" 2>/dev/null'
-check "writer refuses quotes" 'mkdir -p "$work/q\"x" && ! bash "$repo/bin/compose-shares.sh" "$work/q\"x" 2>/dev/null'
-check "writer refuses symlinked paths" 'ln -s /etc "$work/link" && ! bash "$repo/bin/compose-shares.sh" "$work/link/ssl" 2>/dev/null'
+check "writer refuses three folders" '! bash "$repo/bin/compose-edit.sh" --share "$work/disk-a" --share "$work/disk b" --share "$work/disk-c" 2>/dev/null'
+check "writer refuses dot-dot paths" '! bash "$repo/bin/compose-edit.sh" --share "/home/../etc" 2>/dev/null'
+check "writer refuses quotes" 'mkdir -p "$work/q\"x" && ! bash "$repo/bin/compose-edit.sh" --share "$work/q\"x" 2>/dev/null'
+check "writer refuses symlinked paths" 'ln -s /etc "$work/link" && ! bash "$repo/bin/compose-edit.sh" --share "$work/link/ssl" 2>/dev/null'
 check "add refuses symlinked paths" '! "$tool" windows-disks add "$work/link/ssl" X 2>/dev/null'
 check "writer left compose alone" 'cmp -s "$compose" "$work/compose-original"'
 
@@ -184,7 +202,7 @@ check "apply installs the uninstaller" '[[ -x $OMARCHY_TOOL_STATE_DIR/uninstall.
 # Uninstall with disks shared: compose, menu, state and config all go.
 "$tool" windows-disks enable
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$repo"
-check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied ]] && grep -q ":/shared2" "$compose"'
+check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]] && grep -q ":/shared2" "$compose"'
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstall restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
@@ -197,6 +215,47 @@ check "status reports no VM" '[[ $(wd .vmInstalled) == false && $(wd .summary) =
 check "apply without VM succeeds" '"$tool" windows-disks enable'
 mv "$work/compose-away" "$compose"
 rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
+
+# usb-windows: USB devices handed to the Windows VM, in the same compose.
+wu() { "$tool" status | jq -r ".modules[\"usb-windows\"]$1"; }
+check "usb-windows starts off" '[[ $(wu .enabled) == false && $(wu .summary) == Desactivado ]]'
+check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 2 ]] && [[ $(wu ".candidates[] | select(.id == \"093a:822a\") | .name") == "GLORIOUS Model O 2 Wireless" ]]'
+"$tool" usb-windows add 093A:822A
+check "adding while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
+"$tool" usb-windows enable
+check "enable adds usb-host to ARGUMENTS" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew -device usb-host,vendorid=0x093a,productid=0x822a\"" "$compose"'
+check "enable adds /dev/bus/usb after /dev/net/tun" '[[ $(grep -A1 "/dev/net/tun$" "$compose" | tail -n1) == "      - /dev/bus/usb # omarchy-tool" ]]'
+check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "1 en Windows" ]]'
+
+# Disks and USB live side by side; one change never drops the other.
+"$tool" windows-disks add "$work/disk-a" DiskA
+"$tool" windows-disks enable
+check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "usb-host" "$compose"'
+check "both modules report applied" '[[ $(wu .applied) == true && $(wd .applied) == true ]]'
+"$tool" usb-windows add 1b1c:2b0d
+check "second usb device appended" 'grep -q "productid=0x822a -device usb-host,vendorid=0x1b1c,productid=0x2b0d\"" "$compose" && [[ $(grep -c "/dev/bus/usb" "$compose") == 1 ]]'
+"$tool" usb-windows disable
+check "usb off keeps the disks" 'grep -q ":/shared2\"$" "$compose" && ! grep -q "usb-host\|/dev/bus/usb" "$compose"'
+check "ARGUMENTS back to Omarchy's" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
+"$tool" usb-windows enable
+"$tool" windows-disks disable
+check "disks off keeps usb" '! grep -q ":/shared2" "$compose" && grep -q "usb-host" "$compose"'
+"$tool" usb-windows disable
+check "all off restores the compose" 'cmp -s "$compose" "$work/compose-original" && [[ ! -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]]'
+check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && ! "$tool" usb-windows add aaaa:0003 2>/dev/null'
+check "editor refuses bad usb ids" '! bash "$repo/bin/compose-edit.sh" --usb "1b1c:2b0d,x" 2>/dev/null && cmp -s "$compose" "$work/compose-original"'
+
+# Upgrade from v0.0.7-v0.0.10: their record moves into compose.applied.
+"$tool" windows-disks enable
+mv "$OMARCHY_TOOL_STATE_DIR/compose.applied" "$work/rec"
+{ head -n1 "$work/rec"; sed -n "s/^--share //p" "$work/rec"; } >"$OMARCHY_TOOL_STATE_DIR/windows-disks.applied"
+touch "$OMARCHY_TOOL_STATE_DIR/compose-shares.sh"
+before=$(md5sum <"$compose")
+OMARCHY_TOOL_PRIV="false" "$tool" apply
+check "old record is migrated without rewriting" '[[ $(md5sum <"$compose") == "$before" ]] && [[ -f $OMARCHY_TOOL_STATE_DIR/compose.applied && ! -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied && ! -e $OMARCHY_TOOL_STATE_DIR/compose-shares.sh ]]'
+"$tool" windows-disks disable
+rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
+cp "$work/compose-original" "$compose"
 
 # web-devices: browser (WebHID) access to chosen USB devices via a udev rule.
 wv() { "$tool" status | jq -r ".modules[\"web-devices\"]$1"; }
