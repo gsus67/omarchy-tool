@@ -70,7 +70,7 @@ usb_windows_wanted() {
 }
 
 usb_windows_compose_args() {
-  usb_windows_enabled && echo "--usb-bus on"
+  usb_windows_enabled && echo "--usb-bus live"
   return 0
 }
 
@@ -135,7 +135,7 @@ usb_windows_vm_started() {
 # Whether this VM run started with /dev/bus/usb, so devices can be handed over.
 usb_windows_live_ready() {
   local pid=$1
-  [[ -n $pid ]] && grep -qx -- "--usb-bus on" <<<"$(compose_applied)" &&
+  [[ -n $pid ]] && grep -qx -- "--usb-bus live" <<<"$(compose_applied)" &&
     (($(usb_windows_vm_started "$pid") >= $(compose_mtime)))
 }
 

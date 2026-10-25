@@ -254,7 +254,7 @@ check "enable leaves ARGUMENTS alone (nothing taken at boot)" 'grep -qxF "      
 check "enable binds /dev/bus/usb live" 'grep -qxF "      - /dev/bus/usb:/dev/bus/usb # omarchy-tool" "$compose"'
 check "enable allows USB devices that appear later" 'grep -B2 "^    volumes:$" "$compose" | grep -qxF "      - \"c 189:* rwm\" # omarchy-tool" && grep -qxF "    device_cgroup_rules: # omarchy-tool" "$compose"'
 check "Omarchy mounts still counted right" '[[ $(grep -c ":/shared$" "$compose") == 1 && $(grep -c ":/storage$" "$compose") == 1 ]]'
-check "old devices: copy from v0.0.12-v0.0.23 is dropped" 'sed -i "s|^      - /dev/net/tun$|&\n      - /dev/bus/usb # omarchy-tool|" "$compose" && bash "$repo/bin/compose-edit.sh" --usb-bus on && ! grep -qxF "      - /dev/bus/usb # omarchy-tool" "$compose" && [[ $(grep -c "/dev/bus/usb:/dev/bus/usb" "$compose") == 1 ]] && touch -d "+3 seconds" "$compose" && "$tool" apply'
+check "old devices: copy from v0.0.12-v0.0.23 is dropped" 'sed -i "s|^      - /dev/net/tun$|&\n      - /dev/bus/usb # omarchy-tool|" "$compose" && bash "$repo/bin/compose-edit.sh" --usb-bus live && ! grep -qxF "      - /dev/bus/usb # omarchy-tool" "$compose" && [[ $(grep -c "/dev/bus/usb:/dev/bus/usb" "$compose") == 1 ]] && touch -d "+3 seconds" "$compose" && "$tool" apply'
 check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "0 en Windows" ]]'
 check "status tells the panel what to run" '[[ $(wu .watcher) == "$repo/bin/usb-watch.sh" && $(wu .requestFile) == "$usbfolder/.devolver-usb" ]]'
 before=$(md5sum <"$compose")

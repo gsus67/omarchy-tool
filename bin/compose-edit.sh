@@ -3,7 +3,7 @@
 # Sets what omarchy-tool adds to Omarchy's Windows VM compose. Run as root
 # through pkexec by omarchy-tool and by uninstall.sh.
 #
-#   compose-edit.sh [--share FOLDER]... [--usb VVVV:PPPP]... [--usb-bus on]
+#   compose-edit.sh [--share FOLDER]... [--usb VVVV:PPPP]... [--usb-bus live]
 #
 #   --share  up to 2 folders; the first becomes \\host.lan\Data2 and the second
 #            \\host.lan\Data3 in Windows (dockurr/windows serves /shared2 and
@@ -11,7 +11,7 @@
 #   --usb    up to 4 USB devices handed to Windows while the VM runs: a
 #            "-device usb-host" in ARGUMENTS plus /dev/bus/usb in devices, as
 #            dockurr/windows documents for USB passthrough.
-#   --usb-bus on  only USB access, so devices can be handed to the running VM
+#   --usb-bus live  only USB access, so devices can be handed to the running VM
 #            on demand (usb-live.sh) without any being taken at boot. It is a
 #            live bind of /dev/bus/usb plus a cgroup rule for USB devices
 #            (char major 189), not a `devices:` copy: QEMU resets a device it
@@ -60,7 +60,8 @@ while (($#)); do
       shift 2
       ;;
     --usb-bus)
-      [[ ${2:-} == on ]] || fail "--usb-bus takes: on"
+      # "live" since v0.0.25; "on" (v0.0.14-v0.0.24) means the same now.
+      [[ ${2:-} == live || ${2:-} == on ]] || fail "--usb-bus takes: live"
       usb_bus=true
       shift 2
       ;;
