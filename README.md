@@ -1,13 +1,32 @@
 # Omarchy Tool
 
-Plugin para [Omarchy](https://omarchy.org/) con utilidades del sistema que se
-activan y desactivan con un interruptor. Añade un icono a la barra que abre un
-panel con un módulo por función. El panel usa los componentes y colores del
-tema de Omarchy, así que cambia junto con el tema.
+**English** · [Español](README.es.md)
 
-El panel, sus módulos, estados y avisos siguen automáticamente el idioma del sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`). Incluye inglés y español; otros idiomas usan inglés como respaldo. Los nombres de discos y periféricos se conservan. Los mensajes de los auxiliares dentro de Windows siguen el idioma de interfaz de Windows; sus nombres de archivo y rutas se mantienen para conservar los accesos existentes.
+A plugin for [Omarchy](https://omarchy.org/) with system utilities you turn on
+and off with a switch. It adds a bar icon that opens a panel with one module per
+feature. The panel uses Omarchy's theme components and colors, so it changes
+with your theme.
 
-## Instalar, actualizar y desinstalar
+![Omarchy Tool panel](preview.png)
+
+The panel, its modules, states and notifications follow the system language
+(`LC_ALL`, `LC_MESSAGES`, `LANG`). English and Spanish are included; other
+languages fall back to English. Disk and device names are kept as they are. The
+helpers inside Windows follow the Windows UI language; their file names and
+paths stay the same so existing shortcuts keep working.
+
+## Requirements
+
+- Omarchy with the Quickshell shell plugin system (`omarchy plugin`).
+- `jq`, `socat`, `acl` (`setfacl`), `polkit` (`pkexec`) and `udev`, all part of
+  a standard Omarchy install. Nothing is installed automatically.
+- The **Windows** modules need Omarchy's Windows VM (`omarchy-windows-vm`,
+  based on the `dockurr/windows` image under Docker), already installed from
+  the Omarchy menu.
+- Actions that change files owned by root ask for your password through
+  `pkexec` every time.
+
+## Install, update and remove
 
 ```bash
 omarchy plugin add https://github.com/gsus67/omarchy-tool.git --enable
@@ -15,145 +34,165 @@ omarchy plugin update omarchy-tool
 omarchy plugin remove omarchy-tool
 ```
 
-El plugin se actualiza solo: comprueba GitHub al arrancar y cada 6 horas, y si
-hay versión nueva se actualiza con `omarchy plugin update` y te avisa con una
-notificación.
+The plugin keeps itself up to date: it checks GitHub at startup and every 6
+hours, and when there is a new version it runs `omarchy plugin update
+omarchy-tool` and shows a notification. `omarchy-tool self-update` does the same
+on demand.
 
-Tu configuración se guarda en `~/.config/omarchy-tool/config.json`, fuera del
-plugin, así que las actualizaciones no la borran.
+Your settings are stored in `~/.config/omarchy-tool/config.json`, outside the
+plugin, so updates never erase them.
 
-El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
+The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
 `~/.config/omarchy/extensions/omarchy-menu.jsonc`).
 
-## Sin suciedad
+## Leaves no trace
 
-- **Desactivar una función** borra todo lo que esa función escribió en el
-  sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
-- **Eliminar el plugin** deja el sistema como estaba: quita los discos de la
-  configuración de Windows (pide tu contraseña) y borra la configuración del
-  plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
-  del plugin, la limpieza la hace una copia de `bin/uninstall.sh` guardada fuera
-  del plugin, que el panel lanza al descargarse.
-- `omarchy-tool uninstall` hace esa misma limpieza a mano.
+- **Turning a feature off** removes everything that feature wrote to the
+  system. Only your choice is remembered (for example, which disks you ticked).
+- **Removing the plugin** puts the system back as it was: it removes the disks
+  from the Windows configuration (asks for your password), and deletes the
+  plugin settings and the menu entry. Since `omarchy plugin remove` does not run
+  plugin code, the cleanup is done by a copy of `bin/uninstall.sh` kept outside
+  the plugin, which the panel launches when it is unloaded.
+- `omarchy-tool uninstall` runs the same cleanup by hand.
 
-## Módulos
+Files the plugin may write outside its folder, all removed by the cleanup:
 
-### Discos en Windows
+- `~/.config/omarchy-tool/` (settings) and `~/.local/share/omarchy-tool/`
+  (state and the uninstaller copy)
+- An entry in `~/.config/omarchy/extensions/omarchy-menu.jsonc`
+- `~/.config/hypr/omarchy-tool.lua` and one guarded line in `hyprland.lua`
+  (the **SUPER + ALT + U** shortcut)
+- The `/shared2`, `/shared3` and `/dev/bus/usb` lines in
+  `/var/lib/omarchy/windows/docker-compose.yml`
+- `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+- The helpers in the `Omarchy Tool` folder inside the Windows `Shared` folder
+  (if drive letters are still set in Windows, **Quitar discos** stays so you
+  can remove them, and deletes itself when run)
 
-Comparte discos con la VM de Windows de Omarchy igual que Omarchy
-comparte `~/Windows`: como carpetas de red en `\\host.lan` (`Data2` y `Data3`,
-junto a la `Data` de Omarchy). En Windows les puedes poner letra con *Conectar
-unidad de red*. Marca los discos montados en `/mnt`, `/media` o `/run/media`, o
-añade una carpeta por su ruta (también vale `/home`).
+## Modules
 
-**Máximo 2 discos activados a la vez**, porque la imagen de Windows solo sirve
-dos carpetas extra (`Data2` y `Data3`). Para usar otro, desmarca uno primero.
+### Disks in Windows
 
-**Letras:** Omarchy pone `Z:` a su carpeta Shared una sola vez, al instalar
-Windows. Para tus discos eliges la letra en el panel (por defecto `X:` e `Y:`)
-y el plugin deja en Shared › **Omarchy Tool › Discos** el archivo **Activar discos**,
-que hace lo mismo que hizo Omarchy (`net use X: \\host.lan\Data2
-/persistent:yes` y un acceso en el escritorio), y además pone a cada unidad el nombre del disco en *Este equipo* (por ejemplo "Datos (X:)"). Se abre una vez dentro de
-Windows; si cambias letras o discos, se vuelve a abrir. **Quitar discos** lo
-deshace y, si el plugin está apagado o eliminado, se borra a sí mismo.
+Shares disks with Omarchy's Windows VM the same way Omarchy shares `~/Windows`:
+as network folders on `\\host.lan` (`Data2` and `Data3`, next to Omarchy's
+`Data`). Tick disks mounted under `/mnt`, `/media` or `/run/media`, or add a
+folder by its path (`/home` works too).
 
-Cómo funciona: la imagen `dockurr/windows` que usa Omarchy sirve `/shared2` y
-`/shared3` si existen. El plugin añade esas dos líneas a la configuración de la
-VM (`/var/lib/omarchy/windows/docker-compose.yml`, de root) con
-`bin/compose-edit.sh` vía `pkexec`, así que cada cambio pide tu contraseña y
-se ve al volver a abrir Windows. Ese script solo toca esas dos líneas y valida
-las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
+**Up to 2 disks at a time**, because the Windows image only serves two extra
+folders (`Data2` and `Data3`). To use another one, untick one first.
 
-Al ser carpetas de red, algunos instaladores muy estrictos pueden negarse a
-instalar en ellas.
+**Drive letters:** Omarchy gives its Shared folder `Z:` once, when Windows is
+installed. For your disks you pick the letter in the panel (`X:` and `Y:` by
+default) and the plugin puts an **Activar discos** file in Shared › **Omarchy
+Tool › Discos**. It does what Omarchy did (`net use X: \\host.lan\Data2
+/persistent:yes` and a desktop shortcut) and also names each drive after the
+disk in *This PC* (for example "Data (X:)"). Run it once inside Windows; if you
+change letters or disks, run it again. **Quitar discos** undoes it and, if the
+plugin is off or removed, deletes itself.
 
-### Periféricos en Windows
+How it works: the `dockurr/windows` image used by Omarchy serves `/shared2` and
+`/shared3` when they exist. The plugin adds those two lines to the VM
+configuration (`/var/lib/omarchy/windows/docker-compose.yml`, owned by root)
+with `bin/compose-edit.sh` through `pkexec`, so every change asks for your
+password and takes effect the next time Windows starts. That script only
+touches those lines and validates the paths. If you reinstall Windows from
+Omarchy, the plugin adds them again.
 
-Pasa dispositivos USB a la VM de Windows de Omarchy para usar apps que solo
-existen en Windows (por ejemplo **Glorious CORE** con un ratón Glorious Model
-O 2). Windows los ve como si estuvieran enchufados a él; **mientras estén en
-Windows, Linux no los tiene** (un USB solo puede estar en un sistema a la vez).
-Máximo 4 dispositivos.
+Because they are network folders, a few very strict installers may refuse to
+install onto them.
 
-- **El interruptor de la función** prepara Windows: la VM recibe acceso a los
-  USB (`/dev/bus/usb` en `devices`, como documenta `dockurr/windows`), escrito
-  por el mismo `bin/compose-edit.sh` que los discos con `pkexec`. Se nota la
-  próxima vez que abras Windows.
-- **El interruptor de cada dispositivo** significa "en Windows": con Windows
-  abierto pasa al momento, y si no, en cuanto lo abras (el panel lo vigila con
-  `bin/usb-watch.sh`). Apagado, vuelve a Linux al momento. Usa el monitor de
-  QEMU de la VM (`bin/usb-live.sh`, con `pkexec`).
-- **Sin ratón:** **SUPER + ALT + U** devuelve todo a Linux y apaga esos
-  interruptores, aunque la ventana de Windows tenga el teclado (atajo con
-  `dont_inhibit`, en `~/.config/hypr/omarchy-tool.lua`, que `hyprland.lua` carga
-  con una línea protegida). Dentro de Windows, **Shared › Omarchy Tool ›
-  Periféricos › Devolver periféricos a Linux** hace lo mismo. Al pasar algo a
-  Windows, una notificación te recuerda las dos formas.
+### Devices in Windows
 
-Ojo con el cursor: Omarchy muestra Windows como **sesión remota**; un ratón
-pasado por USB mueve el cursor de la pantalla "física" de la VM, no el de esa
-sesión. Para verlo, cierra la ventana de Windows y usa **Abrir Windows con mi
-ratón**: arranca Windows sin la ventana remota (`omarchy-windows-vm launch
---keep-alive` con un `xfreerdp3` vacío delante en el `PATH`) y abre su pantalla
-propia (el noVNC de `dockurr/windows` en `127.0.0.1:8006`) como web app; ahí
-entras con tu contraseña de Windows y el cursor del ratón pasado sí se ve. Al
-terminar: **SUPER + ALT + U** y **Apagar Windows**.
+Passes USB devices to Omarchy's Windows VM so you can use apps that only exist
+on Windows (for example **Glorious CORE** for a Glorious Model O 2 mouse).
+Windows sees them as if they were plugged into it; **while a device is in
+Windows, Linux does not have it** (a USB device can only be in one system at a
+time). Up to 4 devices.
 
-### Periféricos en navegador
+- **The feature switch** prepares Windows: the VM gets access to USB
+  (`/dev/bus/usb` under `devices`, as documented by `dockurr/windows`), written
+  by the same `bin/compose-edit.sh` as the disks, through `pkexec`. It takes
+  effect the next time you open Windows.
+- **Each device switch** means "in Windows": with Windows open it moves right
+  away, otherwise as soon as you open it (the panel watches for it with
+  `bin/usb-watch.sh`). Off, it comes back to Linux right away. It uses the VM's
+  QEMU monitor (`bin/usb-live.sh`, with `pkexec`).
+- **Without a mouse:** **SUPER + ALT + U** returns everything to Linux and
+  turns those switches off, even while the Windows window has the keyboard (a
+  `dont_inhibit` binding in `~/.config/hypr/omarchy-tool.lua`, loaded by
+  `hyprland.lua` with a guarded line). Inside Windows, **Shared › Omarchy Tool ›
+  Periféricos › Devolver periféricos a Linux** does the same. When you pass
+  something to Windows, a notification reminds you of both ways.
 
-Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
-configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el
-dispositivo pero al darle a conectar no pasa nada, porque en Linux esos
-dispositivos solo los puede usar root.
+About the cursor: Omarchy shows Windows as a **remote session**; a mouse passed
+over USB moves the cursor of the VM's "physical" screen, not the one in that
+session. To see it, close the Windows window and use **Open Windows with my
+mouse**: it starts Windows without the remote window (`omarchy-windows-vm launch
+--keep-alive` with an empty `xfreerdp3` first in `PATH`) and opens its own
+screen (the `dockurr/windows` noVNC at `127.0.0.1:8006`) as a web app; sign in
+with your Windows password and the passed mouse cursor shows up. When you are
+done: **SUPER + ALT + U** and **Shut down Windows**.
 
-El plugin escribe una regla en `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
-(con `bin/udev-webhid.sh` vía `pkexec`, así que pide tu contraseña) que da
-acceso solo a la sesión con la que has entrado. Al desmarcar un dispositivo,
-desactivar la función o quitar el plugin, la regla se borra y el acceso ya dado
-se retira al momento.
+### Devices in the browser
 
-Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
-dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
-vayas a configurar y desmárcalo al terminar si quieres.
+Lets the browser talk to the USB devices you tick (WebHID), for web
+configurators such as **CORSAIR Web Hub**. Without it, Chromium sees the device
+but nothing happens when you click connect, because on Linux only root can use
+those devices.
 
-## Línea de comandos
+The plugin writes a rule to `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+(with `bin/udev-webhid.sh` through `pkexec`, so it asks for your password) that
+grants access only to your logged-in session. When you untick a device, turn
+the feature off or remove the plugin, the rule is deleted and the access already
+granted is revoked immediately.
 
-El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
+Note: with access, any program in your session can talk to that device (for a
+keyboard, that includes reading what you type). Tick only what you are going to
+configure, and untick it afterwards if you like.
+
+## Command line
+
+The panel only calls `bin/omarchy-tool`, which you can also use by hand:
 
 ```bash
-omarchy-tool status                          # estado de todos los módulos (JSON)
-omarchy-tool uninstall                       # borra todo rastro fuera del plugin
-omarchy-tool self-update                     # actualiza ya si hay versión nueva
+omarchy-tool status                          # state of every module (JSON)
+omarchy-tool uninstall                       # remove every trace outside the plugin
+omarchy-tool self-update                     # update now if there is a new version
 omarchy-tool windows-disks enable|disable
-omarchy-tool windows-disks add /mnt/datos [Nombre]
-omarchy-tool windows-disks remove /mnt/datos
-omarchy-tool windows-disks letter /mnt/datos X   # o "next"
+omarchy-tool windows-disks add /mnt/data [Name]
+omarchy-tool windows-disks remove /mnt/data
+omarchy-tool windows-disks letter /mnt/data X    # or "next"
 omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
-omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
-omarchy-tool usb-windows move linux --all            # lo mismo que SUPER+ALT+U
+omarchy-tool usb-windows move linux|windows 093a:822a  # with Windows open
+omarchy-tool usb-windows move linux --all            # same as SUPER+ALT+U
 ```
 
-## Añadir un módulo
+## Adding a module
 
-1. `bin/modules/<nombre>.sh` con funciones `<nombre>_<acción>`. Debe tener
-   `<nombre>_enable`, `<nombre>_disable`, `<nombre>_status` (JSON con
-   `enabled`) y `<nombre>_apply`. Al desactivarse, `apply` debe borrar todo lo
-   que el módulo escribió; si toca algo fuera de su carpeta, añade su limpieza
-   a `bin/uninstall.sh`.
-2. `modules/<Nombre>.qml`: la página del módulo. Recibe `status` y llama a
+1. `bin/modules/<name>.sh` with `<name>_<action>` functions. It must have
+   `<name>_enable`, `<name>_disable`, `<name>_status` (JSON with `enabled`) and
+   `<name>_apply`. When disabled, `apply` must delete everything the module
+   wrote; if it touches anything outside its folder, add its cleanup to
+   `bin/uninstall.sh`.
+2. `modules/<Name>.qml`: the module page. It receives `status` and calls
    `tool.run([...])`.
-3. Añádelo a la lista `modules` de `ToolPanel.qml`, con su `group`, junto a los
-   demás de su grupo. En el panel sale bajo el título del grupo, con su nombre y
-   su interruptor.
+3. Add it to the `modules` list in `ToolPanel.qml`, with its `group`, next to
+   the others in its group. The panel shows it under the group title, with its
+   name and its switch.
 
-## Pruebas
+## Tests
 
 ```bash
 tests/run.sh
 omarchy plugin validate .
 ```
+
+## License
+
+[MIT](LICENSE)

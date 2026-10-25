@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "omarchy-tool",
   "name": "Omarchy Tool",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "author": "Omarchy Tool contributors",
   "license": "MIT",
-  "description": "Personal toolbox for Omarchy: a bar panel with switchable modules. First module: share your disks with the Windows VM on \\\\host.lan.",
+  "description": "Toolbox for Omarchy: a bar panel with switchable system tweaks. Share disks and pass USB devices to Omarchy's Windows VM, and enable WebHID for browser device configurators.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Omarchy Tool",
-    "description": "Switchable system tweaks, like opening Windows with your disks.",
+    "description": "Switchable system tweaks: disks and USB devices in the Windows VM, WebHID in the browser.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"
