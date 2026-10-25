@@ -128,7 +128,9 @@ el propio Omarchy Tool no salen. Usa el propio `omarchy plugin enable|disable`
 de Omarchy: no pide contraseña y no escribe nada fuera de la configuración del
 plugin. Al desactivar un icono de la barra se recuerda su sitio (sección y
 posición) y vuelve ahí al activarlo. No cambia nada por sí mismo, así que en la
-lista del panel no tiene interruptor propio.
+lista del panel no tiene interruptor propio. Un plugin de barra completa sale
+sin interruptor: Omarchy no permite apagar una barra, solo cambiarla con
+`omarchy bar use`.
 
 ## Línea de comandos
 

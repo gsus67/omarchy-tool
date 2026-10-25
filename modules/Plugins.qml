@@ -65,14 +65,64 @@ Column {
   Repeater {
     model: root.plugins
 
-    Toggle {
+    Loader {
       required property var modelData
       width: root.width
-      label: modelData.name
-      description: root.kindText(modelData.kinds)
-      checked: modelData.enabled === true
-      foreground: root.fg
-      onClicked: root.run(["plugins", modelData.enabled ? "off" : "on", modelData.id])
+      sourceComponent: modelData.toggleable === false ? fixedRow : switchRow
+
+      Component {
+        id: switchRow
+        Toggle {
+          label: modelData.name
+          description: root.kindText(modelData.kinds)
+          checked: modelData.enabled === true
+          foreground: root.fg
+          onClicked: root.run(["plugins", modelData.enabled ? "off" : "on", modelData.id])
+        }
+      }
+
+      // A full bar can't be turned off, only swapped with `omarchy bar use`:
+      // same row, no switch.
+      Component {
+        id: fixedRow
+        BorderSurface {
+          implicitHeight: Math.max(54, fixedLabels.implicitHeight + Style.spacing.huge)
+          radius: Style.cornerRadius
+          color: Style.controlFill(false, false, root.fg, Commons.Color.accent)
+          borderSpec: Border.controlSpec("normal", root.fg, Commons.Color.accent)
+
+          Column {
+            id: fixedLabels
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: parent.borderLeft + Style.spacing.rowPaddingX
+            anchors.rightMargin: parent.borderRight + Style.spacing.rowPaddingX
+            spacing: Style.spacing.xs
+
+            Text {
+              textFormat: Text.PlainText
+              text: modelData.name
+              color: root.fg
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+              elide: Text.ElideRight
+              width: parent.width
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: modelData.enabled ? root.t("Barra completa · en uso") : root.t("Barra completa · se elige con omarchy bar use")
+              color: Qt.darker(root.fg, 1.5)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+              width: parent.width
+            }
+          }
+        }
+      }
     }
   }
 }

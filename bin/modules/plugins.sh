@@ -4,7 +4,9 @@
 # Turns installed Omarchy plugins on and off from the panel, through Omarchy's
 # own `omarchy plugin enable|disable`. The list comes from `omarchy plugin
 # list`, so any plugin added later shows up by itself. Built-in plugins and
-# Omarchy Tool itself are left out.
+# Omarchy Tool itself are left out. A full bar (kind "bar") has no off state
+# in Omarchy, only `omarchy bar use` to pick another, so it is listed without
+# a switch.
 #
 # Turning a bar widget off drops it from the bar layout, so its place
 # (section and position) is remembered first and handed back to `omarchy
@@ -24,12 +26,17 @@ plugins_list_json() {
   self=$(plugins_self_id)
   "$PLUGINS_OMARCHY" plugin list --json 2>/dev/null |
     jq -c --arg self "$self" '[.[] | select(.firstParty != true and .id != $self)
-      | {id, name, kinds, enabled: (.enabled == true)}] | sort_by(.name | ascii_downcase)' 2>/dev/null ||
+      | {id, name, kinds, enabled: (.enabled == true),
+         toggleable: ((.kinds | index("bar") | not) and .canDisable != false)}] | sort_by(.name | ascii_downcase)' 2>/dev/null ||
     echo '[]'
 }
 
 plugins_known() {
   plugins_list_json | jq -e --arg id "$1" 'any(.[]; .id == $id)' >/dev/null
+}
+
+plugins_toggleable() {
+  plugins_list_json | jq -e --arg id "$1" 'any(.[]; .id == $id and .toggleable)' >/dev/null
 }
 
 # Where a widget sits in the bar right now: {"section": "right", "index": 2}.
@@ -52,6 +59,7 @@ plugins_on() {
   local id=${1:-} placement section index args=()
   [[ -n $id ]] || fail "usage: omarchy-tool plugins on <plugin-id>"
   plugins_known "$id" || fail "$(tool_text 'plugin desconocido: %1' "$id")"
+  plugins_toggleable "$id" || fail "$(tool_text '%1 no se puede activar o desactivar' "$id")"
   placement=$(config_get -c '.modules.plugins.placements[$id] // empty' --arg id "$id")
   if [[ -n $placement ]]; then
     section=$(jq -r '.section // empty' <<<"$placement")
@@ -68,6 +76,7 @@ plugins_off() {
   local id=${1:-} placement
   [[ -n $id ]] || fail "usage: omarchy-tool plugins off <plugin-id>"
   plugins_known "$id" || fail "$(tool_text 'plugin desconocido: %1' "$id")"
+  plugins_toggleable "$id" || fail "$(tool_text '%1 no se puede activar o desactivar' "$id")"
   placement=$(plugins_placement "$id")
   if [[ -n $placement ]]; then
     config_update '.modules.plugins.placements[$id] = $placement' --arg id "$id" --argjson placement "$placement"

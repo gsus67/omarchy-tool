@@ -43,7 +43,8 @@ export OMARCHY_TOOL_SHELL_JSON="$work/shell.json"
 printf '%s\n' '[{"id":"omarchy.clock","name":"Clock","kinds":["bar-widget"],"enabled":true,"firstParty":true},
 {"id":"io.github.gsus67.omarchy-tool","name":"Omarchy Tool","kinds":["bar-widget"],"enabled":true,"firstParty":false},
 {"id":"acme.weather","name":"Weather","kinds":["bar-widget"],"enabled":true,"firstParty":false},
-{"id":"acme.dock","name":"Dock","kinds":["panel"],"enabled":false,"firstParty":false}]' >"$work/plugins.json"
+{"id":"acme.dock","name":"Dock","kinds":["panel"],"enabled":false,"firstParty":false},
+{"id":"acme.bar","name":"Acme Bar","kinds":["bar"],"enabled":false,"firstParty":false}]' >"$work/plugins.json"
 printf '%s\n' '{"bar":{"layout":{"left":[{"id":"omarchy.menu"}],"right":[{"id":"omarchy.tray"},{"id":"acme.weather"},{"id":"omarchy.clock"}]}}}' >"$work/shell.json"
 cat >"$OMARCHY_TOOL_OMARCHY" <<FAKE
 #!/bin/bash
@@ -431,10 +432,11 @@ check "self-update notifies" 'grep -q "Omarchy Tool actualizado" "$work/notify.l
 # plugins: lists installed third-party plugins except Omarchy Tool, and turns
 # them on/off through `omarchy plugin`, keeping a widget's place in the bar.
 pl() { "$tool" status | jq -r ".modules.plugins$1"; }
-check "plugins: built-ins and itself are not listed" '[[ $(pl " | [.plugins[].id] | join(\",\")") == "acme.dock,acme.weather" ]]'
+check "plugins: built-ins and itself are not listed" '[[ $(pl " | [.plugins[].id] | join(\",\")") == "acme.bar,acme.dock,acme.weather" ]]'
 check "plugins: has no feature switch" '[[ $(pl .enabled) == true ]] && ! "$tool" plugins enable 2>/dev/null'
-check "plugins: summary counts active ones" '[[ $(pl .summary) == "1 de 2 activos" ]]'
+check "plugins: summary counts active ones" '[[ $(pl .summary) == "1 de 3 activos" ]]'
 check "plugins: unknown id is refused" '! "$tool" plugins off acme.nope 2>/dev/null && ! "$tool" plugins off io.github.gsus67.omarchy-tool 2>/dev/null'
+check "plugins: a full bar has no switch and is refused" '[[ $(pl " | .plugins[] | select(.id == \"acme.bar\") | .toggleable") == false ]] && ! "$tool" plugins on acme.bar 2>/dev/null && ! grep -q acme.bar "$work/plugin-calls.log" 2>/dev/null'
 "$tool" plugins off acme.weather
 check "plugins: off disables it" '[[ $(tail -n1 "$work/plugin-calls.log") == "disable acme.weather" ]] && [[ $(pl ".plugins[] | select(.id == \"acme.weather\") | .enabled") == false ]]'
 check "plugins: remembers the bar place" '[[ $(jq -c ".modules.plugins.placements[\"acme.weather\"]" "$OMARCHY_TOOL_CONFIG_DIR/config.json") == "{\"section\":\"right\",\"index\":1}" ]]'

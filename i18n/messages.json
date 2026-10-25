@@ -87,7 +87,10 @@
     "%1 de %2 activos": "%1 of %2 on",
     "plugin desconocido: %1": "unknown plugin: %1",
     "no se pudo activar %1": "could not turn on %1",
-    "no se pudo desactivar %1": "could not turn off %1"
+    "no se pudo desactivar %1": "could not turn off %1",
+    "Barra completa · en uso": "Full bar · in use",
+    "Barra completa · se elige con omarchy bar use": "Full bar · pick it with omarchy bar use",
+    "%1 no se puede activar o desactivar": "%1 can't be turned on or off"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

@@ -161,6 +161,8 @@ uses Omarchy's own `omarchy plugin enable|disable`: no password, and nothing is
 written outside the plugin's settings. When a bar icon is turned off its place
 (section and position) is remembered, and it goes back there when turned on.
 It changes nothing by itself, so it has no switch of its own in the panel list.
+A full bar plugin is listed without a switch: Omarchy can't turn a bar off,
+only swap it with `omarchy bar use`.
 
 ## Command line
 
