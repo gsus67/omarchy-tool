@@ -36,7 +36,7 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 
 ## Módulos
 
-### Windows
+### Discos en Windows
 
 Comparte discos con la VM de Windows de Omarchy igual que Omarchy
 comparte `~/Windows`: como carpetas de red en `\\host.lan` (`Data2` y `Data3`,
@@ -65,23 +65,6 @@ las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
 Al ser carpetas de red, algunos instaladores muy estrictos pueden negarse a
 instalar en ellas.
 
-### Periféricos en el navegador
-
-Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
-configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el
-dispositivo pero al darle a conectar no pasa nada, porque en Linux esos
-dispositivos solo los puede usar root.
-
-El plugin escribe una regla en `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
-(con `bin/udev-webhid.sh` vía `pkexec`, así que pide tu contraseña) que da
-acceso solo a la sesión con la que has entrado. Al desmarcar un dispositivo,
-desactivar la función o quitar el plugin, la regla se borra y el acceso ya dado
-se retira al momento.
-
-Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
-dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
-vayas a configurar y desmárcalo al terminar si quieres.
-
 ### Periféricos en Windows
 
 Pasa los dispositivos USB que marques a la VM de Windows de Omarchy cuando tú
@@ -101,6 +84,23 @@ Windows** para cada dispositivo: lo cambia al momento, sin cerrar Windows (cerra
 la ventana apaga la VM y pierdes lo que tengas abierto). Usa el monitor de QEMU
 de la VM (`bin/usb-live.sh`, con `pkexec`). Si no tienes otro ratón, abre el
 panel desde el menú de Omarchy y muévete con el teclado.
+
+### Periféricos en el navegador
+
+Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
+configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el
+dispositivo pero al darle a conectar no pasa nada, porque en Linux esos
+dispositivos solo los puede usar root.
+
+El plugin escribe una regla en `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+(con `bin/udev-webhid.sh` vía `pkexec`, así que pide tu contraseña) que da
+acceso solo a la sesión con la que has entrado. Al desmarcar un dispositivo,
+desactivar la función o quitar el plugin, la regla se borra y el acceso ya dado
+se retira al momento.
+
+Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
+dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
+vayas a configurar y desmárcalo al terminar si quieres.
 
 ## Línea de comandos
 
@@ -132,8 +132,9 @@ omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
    a `bin/uninstall.sh`.
 2. `modules/<Nombre>.qml`: la página del módulo. Recibe `status` y llama a
    `tool.run([...])`.
-3. Añádelo a la lista `modules` de `ToolPanel.qml`. En la lista del panel sale
-   con su nombre y su interruptor.
+3. Añádelo a la lista `modules` de `ToolPanel.qml`, con su `group`, junto a los
+   demás de su grupo. En el panel sale bajo el título del grupo, con su nombre y
+   su interruptor.
 
 ## Pruebas
 
