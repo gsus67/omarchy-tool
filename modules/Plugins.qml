@@ -3,8 +3,8 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// Module: plugins page. The on/off switch lives on the panel's list; here
-// each installed plugin has its own switch, through `omarchy plugin
+// Module: plugins page, with no switch of its own on the panel's list: each
+// installed plugin has its own switch here, through `omarchy plugin
 // enable|disable`. Plugins added later show up by themselves.
 Column {
   id: root
@@ -14,7 +14,6 @@ Column {
   function t(source) { return tool ? tool.t(source) : source }
 
   readonly property color fg: tool ? tool.barForeground : Commons.Color.foreground
-  readonly property bool active: status.enabled === true
   readonly property var plugins: status.plugins || []
 
   function kindText(kinds) {
@@ -73,8 +72,6 @@ Column {
       description: root.kindText(modelData.kinds)
       checked: modelData.enabled === true
       foreground: root.fg
-      enabled: root.active
-      opacity: root.active ? 1 : 0.6
       onClicked: root.run(["plugins", modelData.enabled ? "off" : "on", modelData.id])
     }
   }

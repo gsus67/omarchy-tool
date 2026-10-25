@@ -160,7 +160,7 @@ up by themselves; built-in plugins and Omarchy Tool itself are left out. It
 uses Omarchy's own `omarchy plugin enable|disable`: no password, and nothing is
 written outside the plugin's settings. When a bar icon is turned off its place
 (section and position) is remembered, and it goes back there when turned on.
-Turning this feature off leaves every plugin as it is.
+It changes nothing by itself, so it has no switch of its own in the panel list.
 
 ## Command line
 
@@ -184,7 +184,6 @@ omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
 omarchy-tool usb-windows move linux|windows 093a:822a  # with Windows open
 omarchy-tool usb-windows move linux --all            # same as SUPER+ALT+U
-omarchy-tool plugins enable|disable
 omarchy-tool plugins on|off io.github.gsus67.omarchy-taskbar
 ```
 

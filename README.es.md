@@ -127,8 +127,8 @@ plugins que añadas después aparecen solos; los plugins integrados de Omarchy y
 el propio Omarchy Tool no salen. Usa el propio `omarchy plugin enable|disable`
 de Omarchy: no pide contraseña y no escribe nada fuera de la configuración del
 plugin. Al desactivar un icono de la barra se recuerda su sitio (sección y
-posición) y vuelve ahí al activarlo. Desactivar esta función deja cada plugin
-como esté.
+posición) y vuelve ahí al activarlo. No cambia nada por sí mismo, así que en la
+lista del panel no tiene interruptor propio.
 
 ## Línea de comandos
 
@@ -152,7 +152,6 @@ omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
 omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
 omarchy-tool usb-windows move linux --all            # lo mismo que SUPER+ALT+U
-omarchy-tool plugins enable|disable
 omarchy-tool plugins on|off io.github.gsus67.omarchy-taskbar
 ```
 

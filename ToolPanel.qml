@@ -47,7 +47,7 @@ Panel {
     { id: "windows-disks", group: "Windows", title: root.t("Discos en Windows"), source: "modules/WindowsDisks.qml" },
     { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" },
-    { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml" }
+    { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
 
   readonly property string toolPath: decodeURIComponent(String(Qt.resolvedUrl("bin/omarchy-tool")).replace(/^file:\/\//, ""))
@@ -325,6 +325,7 @@ Panel {
                 title: modelData.title
                 hint: modelData.hint || ""
                 checked: parent.on
+                switchable: modelData.switchable !== false
                 hasCursor: root.cursorIndex === parent.index
                 onClicked: root.openModule(modelData)
                 onToggled: root.run([modelData.id, parent.on ? "disable" : "enable"])
@@ -365,13 +366,15 @@ Panel {
 
   // A module's entry in the list: its name and an on/off switch. The switch
   // runs `<module> enable|disable`; the rest of the row opens the module's
-  // page. Same fill, border and cursor tokens as the kit's Toggle rows.
+  // page. A module with nothing to turn on (`switchable: false`) shows a
+  // chevron instead and the whole row opens it. Same fill, border and cursor tokens as the kit's Toggle rows.
   component ModuleButton: BorderSurface {
     id: entry
 
     property string title: ""
     property string hint: ""
     property bool checked: false
+    property bool switchable: true
     property bool hasCursor: false
     readonly property color fg: root.barForeground
     readonly property bool hot: hasCursor || mouse.containsMouse || toggle.containsMouse
@@ -383,7 +386,7 @@ Panel {
     activeFocusOnTab: true
     Keys.onReturnPressed: entry.clicked()
     Keys.onEnterPressed: entry.clicked()
-    Keys.onSpacePressed: entry.toggled()
+    Keys.onSpacePressed: entry.switchable ? entry.toggled() : entry.clicked()
 
     implicitHeight: Math.max(48, Math.max(toggle.implicitHeight, labels.implicitHeight) + Style.spacing.huge)
     radius: Style.cornerRadius
@@ -403,7 +406,7 @@ Panel {
     Column {
       id: labels
       anchors.left: parent.left
-      anchors.right: toggle.left
+      anchors.right: entry.switchable ? toggle.left : chevron.left
       anchors.leftMargin: entry.borderLeft + Style.spacing.rowPaddingX
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
@@ -432,8 +435,22 @@ Panel {
       }
     }
 
+    Text {
+      id: chevron
+      visible: !entry.switchable
+      textFormat: Text.PlainText
+      text: "›"
+      color: Qt.darker(entry.fg, 1.3)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.subtitle
+      anchors.right: parent.right
+      anchors.rightMargin: entry.borderRight + Style.spacing.rowPaddingX
+      anchors.verticalCenter: parent.verticalCenter
+    }
+
     ToggleSwitch {
       id: toggle
+      visible: entry.switchable
       checked: entry.checked
       cursorRing: false
       foreground: entry.fg

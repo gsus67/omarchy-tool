@@ -432,8 +432,7 @@ check "self-update notifies" 'grep -q "Omarchy Tool actualizado" "$work/notify.l
 # them on/off through `omarchy plugin`, keeping a widget's place in the bar.
 pl() { "$tool" status | jq -r ".modules.plugins$1"; }
 check "plugins: built-ins and itself are not listed" '[[ $(pl " | [.plugins[].id] | join(\",\")") == "acme.dock,acme.weather" ]]'
-check "plugins: off until the feature is on" '! "$tool" plugins off acme.weather 2>/dev/null && [[ ! -e $work/plugin-calls.log ]]'
-"$tool" plugins enable
+check "plugins: has no feature switch" '[[ $(pl .enabled) == true ]] && ! "$tool" plugins enable 2>/dev/null'
 check "plugins: summary counts active ones" '[[ $(pl .summary) == "1 de 2 activos" ]]'
 check "plugins: unknown id is refused" '! "$tool" plugins off acme.nope 2>/dev/null && ! "$tool" plugins off io.github.gsus67.omarchy-tool 2>/dev/null'
 "$tool" plugins off acme.weather
@@ -443,8 +442,6 @@ check "plugins: remembers the bar place" '[[ $(jq -c ".modules.plugins.placement
 check "plugins: on puts it back in its place" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.weather --section right --index 1" ]]'
 "$tool" plugins on acme.dock
 check "plugins: on without a saved place uses the default" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.dock" ]]'
-"$tool" plugins disable
-check "plugins: turning the feature off leaves plugins as they are" '[[ $(tail -n1 "$work/plugin-calls.log") == "enable acme.dock" ]] && [[ $(pl .summary) == Desactivado ]]'
 
 check "unknown module fails" '! "$tool" nope status 2>/dev/null'
 check "unknown action fails" '! "$tool" windows-disks nope 2>/dev/null'

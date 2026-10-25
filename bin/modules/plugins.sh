@@ -9,14 +9,10 @@
 # Turning a bar widget off drops it from the bar layout, so its place
 # (section and position) is remembered first and handed back to `omarchy
 # plugin enable` when it is turned on again. Nothing is written outside our
-# own config; turning the module off leaves every plugin as it is.
+# own config. It changes nothing by itself, so it has no on/off switch.
 
 PLUGINS_OMARCHY="${OMARCHY_TOOL_OMARCHY:-omarchy}"
 PLUGINS_SHELL_JSON="${OMARCHY_TOOL_SHELL_JSON:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json}"
-
-plugins_enabled() {
-  [[ $(config_get '.modules.plugins.enabled // false') == true ]]
-}
 
 plugins_self_id() {
   jq -r '.id // empty' "$TOOL_DIR/manifest.json" 2>/dev/null
@@ -48,26 +44,13 @@ plugins_placement() {
 plugins_apply() { :; }
 
 plugins_status() {
-  local enabled=false list
-  plugins_enabled && enabled=true
-  list=$(plugins_list_json)
-  jq -n --argjson enabled "$enabled" --argjson plugins "$list" \
-    '{enabled: $enabled, applied: true, plugins: $plugins}'
-}
-
-plugins_enable() {
-  config_update '.modules.plugins.enabled = true'
-}
-
-plugins_disable() {
-  config_update '.modules.plugins.enabled = false'
+  jq -n --argjson plugins "$(plugins_list_json)" '{enabled: true, applied: true, plugins: $plugins}'
 }
 
 # on <plugin-id>
 plugins_on() {
   local id=${1:-} placement section index args=()
   [[ -n $id ]] || fail "usage: omarchy-tool plugins on <plugin-id>"
-  plugins_enabled || fail "activa primero la función Plugins"
   plugins_known "$id" || fail "$(tool_text 'plugin desconocido: %1' "$id")"
   placement=$(config_get -c '.modules.plugins.placements[$id] // empty' --arg id "$id")
   if [[ -n $placement ]]; then
@@ -84,7 +67,6 @@ plugins_on() {
 plugins_off() {
   local id=${1:-} placement
   [[ -n $id ]] || fail "usage: omarchy-tool plugins off <plugin-id>"
-  plugins_enabled || fail "activa primero la función Plugins"
   plugins_known "$id" || fail "$(tool_text 'plugin desconocido: %1' "$id")"
   placement=$(plugins_placement "$id")
   if [[ -n $placement ]]; then
