@@ -9,8 +9,8 @@ tema de Omarchy, así que cambia junto con el tema.
 
 ```bash
 omarchy plugin add https://github.com/gsus67/omarchy-tool.git --enable
-omarchy plugin update gsus.tool
-omarchy plugin remove gsus.tool
+omarchy plugin update omarchy-tool
+omarchy plugin remove omarchy-tool
 ```
 
 Tu configuración se guarda en `~/.config/omarchy-tool/config.json`, fuera del

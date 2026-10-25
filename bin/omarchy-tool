@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy-tool: backend for the gsus.tool Omarchy plugin.
+# omarchy-tool: backend for the omarchy-tool Omarchy plugin.
 #
 # Every feature is a module in bin/modules/<name>.sh. A module defines
 # functions named <name>_<action> (dashes become underscores), plus optional

@@ -101,7 +101,7 @@ windows_disks_write_launcher() {
   tmp=$(mktemp "$STATE_DIR/.windows-vm-launch.XXXXXX")
   cat >"$tmp" <<EOF
 #!/bin/bash
-# Written by the gsus.tool Omarchy plugin (omarchy-tool windows-disks).
+# Written by the omarchy-tool Omarchy plugin (omarchy-tool windows-disks).
 # Opens Windows with your configured disks, or the stock way if the plugin
 # is gone.
 tool=$(printf '%q' "$TOOL_DIR/bin/omarchy-tool")

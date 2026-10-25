@@ -13,8 +13,8 @@ import qs.Ui
 // and calls `tool.run([...])`. Add a module by listing it in `modules` below.
 Panel {
   id: root
-  moduleName: "gsus.tool"
-  ipcTarget: "gsus.tool"
+  moduleName: "omarchy-tool"
+  ipcTarget: "omarchy-tool"
 
   readonly property var modules: [
     { id: "windows-disks", source: "modules/WindowsDisks.qml" }
