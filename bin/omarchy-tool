@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# omarchy-tool: backend for the gsus.tool Omarchy plugin.
+#
+# Every feature is a module in bin/modules/<name>.sh. A module defines
+# functions named <name>_<action> (dashes become underscores), plus optional
+# <name>_status (JSON for the panel) and <name>_apply (sync side effects with
+# the saved config). The panel only talks to this command.
+#
+# Usage:
+#   omarchy-tool status                 JSON state of every module
+#   omarchy-tool apply                  Re-apply every module's config
+#   omarchy-tool modules                List module names
+#   omarchy-tool <module> <action> ...  Run a module action
+
+set -euo pipefail
+
+TOOL_DIR=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
+TOOL_VERSION=$(jq -r '.version // "0.0.0"' "$TOOL_DIR/manifest.json" 2>/dev/null || echo "0.0.0")
+CONFIG_DIR="${OMARCHY_TOOL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-tool}"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+STATE_DIR="${OMARCHY_TOOL_STATE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tool}"
+export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
+
+fail() {
+  echo "omarchy-tool: $*" >&2
+  exit 1
+}
+
+# --- config helpers ----------------------------------------------------------
+
+config_read() {
+  if [[ -s $CONFIG_FILE ]] && jq -e 'type == "object"' "$CONFIG_FILE" >/dev/null 2>&1; then
+    cat "$CONFIG_FILE"
+  else
+    echo '{}'
+  fi
+}
+
+# config_get <jq filter> [jq args...]
+config_get() {
+  local filter=$1
+  shift
+  config_read | jq "$@" "$filter"
+}
+
+# config_update <jq filter> [jq args...] -- writes atomically.
+config_update() {
+  local filter=$1 tmp
+  shift
+  mkdir -p -- "$CONFIG_DIR"
+  tmp=$(mktemp "$CONFIG_DIR/.config.json.XXXXXX")
+  if ! config_read | jq "$@" "$filter" >"$tmp"; then
+    rm -f -- "$tmp"
+    fail "could not update $CONFIG_FILE"
+  fi
+  mv -f -- "$tmp" "$CONFIG_FILE"
+}
+
+# --- modules -----------------------------------------------------------------
+
+module_names() {
+  local file
+  for file in "$TOOL_DIR"/bin/modules/*.sh; do
+    [[ -e $file ]] || continue
+    basename -- "$file" .sh
+  done
+}
+
+for module_file in "$TOOL_DIR"/bin/modules/*.sh; do
+  [[ -e $module_file ]] || continue
+  # shellcheck source=/dev/null
+  source "$module_file"
+done
+
+module_fn() {
+  local name="${1}_${2}"
+  echo "${name//-/_}"
+}
+
+has_fn() {
+  declare -F -- "$1" >/dev/null
+}
+
+cmd_status() {
+  local name fn json='{}' module_json
+  for name in $(module_names); do
+    fn=$(module_fn "$name" status)
+    has_fn "$fn" || continue
+    module_json=$("$fn") || module_json='{"error":"status failed"}'
+    json=$(jq --arg name "$name" --argjson value "$module_json" '.[$name] = $value' <<<"$json")
+  done
+  jq -n --arg version "$TOOL_VERSION" --argjson modules "$json" '{version: $version, modules: $modules}'
+}
+
+cmd_apply() {
+  local name fn status=0
+  for name in $(module_names); do
+    fn=$(module_fn "$name" apply)
+    has_fn "$fn" || continue
+    "$fn" || status=1
+  done
+  return "$status"
+}
+
+main() {
+  local command=${1:-}
+  [[ $# -gt 0 ]] && shift
+
+  case $command in
+    status) cmd_status ;;
+    apply) cmd_apply ;;
+    modules) module_names ;;
+    version | --version) echo "$TOOL_VERSION" ;;
+    "" | help | -h | --help)
+      sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      ;;
+    *)
+      local action=${1:-} fn
+      module_names | grep -qxF -- "$command" || fail "unknown command or module: $command"
+      [[ -n $action ]] || fail "missing action for module $command"
+      shift
+      fn=$(module_fn "$command" "$action")
+      has_fn "$fn" || fail "unknown action for $command: $action"
+      "$fn" "$@"
+      ;;
+  esac
+}
+
+main "$@"

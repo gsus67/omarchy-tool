@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "gsus.tool",
+  "name": "Omarchy Tool",
+  "version": "0.0.1",
+  "author": "gsus67",
+  "license": "MIT",
+  "description": "Personal toolbox for Omarchy: a bar panel with switchable modules. First module: open the Windows VM with your chosen disks attached.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "ToolPanel.qml"
+  },
+  "barWidget": {
+    "displayName": "Omarchy Tool",
+    "description": "Switchable system tweaks, like opening Windows with your disks.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
