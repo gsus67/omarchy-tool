@@ -23,7 +23,7 @@ Panel {
   // next to each other.
   readonly property var modules: [
     { id: "windows-disks", group: "Windows", title: "Discos en Windows", source: "modules/WindowsDisks.qml" },
-    { id: "usb-windows", group: "Windows", title: "Periféricos en Windows", source: "modules/UsbWindows.qml" },
+    { id: "usb-windows", group: "Windows", title: "Periféricos en Windows", hint: "SUPER + ALT + U: devolver todo a Linux", source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: "Navegador", title: "Periféricos en navegador", source: "modules/WebDevices.qml" }
   ]
 
@@ -278,6 +278,7 @@ Panel {
               ModuleButton {
                 width: parent.width
                 title: modelData.title
+                hint: modelData.hint || ""
                 checked: parent.on
                 hasCursor: root.cursorIndex === parent.index
                 onClicked: root.openModule(modelData)
@@ -320,6 +321,7 @@ Panel {
     id: entry
 
     property string title: ""
+    property string hint: ""
     property bool checked: false
     property bool hasCursor: false
     readonly property color fg: root.barForeground
@@ -334,7 +336,7 @@ Panel {
     Keys.onEnterPressed: entry.clicked()
     Keys.onSpacePressed: entry.toggled()
 
-    implicitHeight: Math.max(48, toggle.implicitHeight + Style.spacing.huge)
+    implicitHeight: Math.max(48, Math.max(toggle.implicitHeight, labels.implicitHeight) + Style.spacing.huge)
     radius: Style.cornerRadius
     color: Style.controlFill(activeFocus, hot, fg, Commons.Color.accent)
     borderSpec: spec
@@ -349,18 +351,36 @@ Panel {
       onClicked: entry.clicked()
     }
 
-    Text {
-      textFormat: Text.PlainText
-      text: entry.title
-      color: entry.fg
-      font.family: Style.font.family
-      font.pixelSize: Style.font.subtitle
-      font.bold: true
-      elide: Text.ElideRight
+    Column {
+      id: labels
       anchors.left: parent.left
       anchors.right: toggle.left
       anchors.leftMargin: entry.borderLeft + Style.spacing.rowPaddingX
+      anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.spacing.xs
+
+      Text {
+        textFormat: Text.PlainText
+        text: entry.title
+        color: entry.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.subtitle
+        font.bold: true
+        elide: Text.ElideRight
+        width: parent.width
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: entry.hint !== ""
+        text: entry.hint
+        color: Qt.darker(entry.fg, 1.5)
+        font.family: Style.font.family
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+        width: parent.width
+      }
     }
 
     ToggleSwitch {

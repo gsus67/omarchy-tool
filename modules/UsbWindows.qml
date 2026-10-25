@@ -74,7 +74,6 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    visible: root.active
     text: "Para devolverlo todo a Linux sin ratón: SUPER + ALT + U (funciona aunque Windows tenga el teclado), o dentro de Windows abre Shared › Omarchy Tool › Periféricos › Devolver periféricos a Linux."
     color: root.fg
     font.family: Style.font.family
