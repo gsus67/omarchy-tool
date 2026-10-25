@@ -65,7 +65,7 @@ las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
 Al ser carpetas de red, algunos instaladores muy estrictos pueden negarse a
 instalar en ellas.
 
-### Periféricos
+### Periféricos en el navegador
 
 Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
 configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el
@@ -82,7 +82,7 @@ Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
 dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
 vayas a configurar y desmárcalo al terminar si quieres.
 
-### USB a Windows
+### Periféricos en Windows
 
 Pasa los dispositivos USB que marques a la VM de Windows de Omarchy cuando tú
 quieras, para usar apps que solo existen en Windows (por ejemplo **Glorious

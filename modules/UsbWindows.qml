@@ -74,7 +74,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    text: "No marques el teclado o el ratón que estás usando si no tienes otro a mano."
+    text: "No pases a Windows el teclado o el ratón que estás usando si no tienes otro a mano, ni el Bluetooth: Linux los pierde mientras estén allí."
     color: Commons.Color.urgent
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall

@@ -15,6 +15,7 @@
 
 USB_WINDOWS_SYS="${OMARCHY_TOOL_USB_SYS:-/sys/bus/usb/devices}"
 USB_WINDOWS_MAX=4
+USB_WINDOWS_IDS="${OMARCHY_TOOL_USB_IDS:-/usr/share/hwdata/usb.ids}"
 
 usb_windows_enabled() {
   [[ $(config_get '.modules["usb-windows"].enabled // false') == true ]]
@@ -22,6 +23,16 @@ usb_windows_enabled() {
 
 usb_windows_valid_id() {
   [[ $1 =~ ^[0-9a-f]{4}:[0-9a-f]{4}$ ]]
+}
+
+# Name from the system USB id database, for devices that report none.
+usb_windows_db_name() {
+  local vendor=${1%:*} product=${1#*:}
+  [[ -f $USB_WINDOWS_IDS ]] || return 0
+  awk -v v="$vendor" -v p="$product" '
+    /^[0-9a-f]{4}  / { inv = ($1 == v); if (inv) vname = substr($0, 7); next }
+    inv && /^\t[0-9a-f]{4}  / && substr($1, 1) == p { print vname " " substr($0, 8); exit }
+  ' "$USB_WINDOWS_IDS"
 }
 
 # Connected USB devices, hubs left out, one per vendor:product, as JSON.
@@ -32,6 +43,7 @@ usb_windows_connected_json() {
     [[ $(cat "$dev/bDeviceClass" 2>/dev/null) == 09 ]] && continue
     id="$(<"$dev/idVendor"):$(<"$dev/idProduct")"
     name="$(cat "$dev/manufacturer" 2>/dev/null) $(cat "$dev/product" 2>/dev/null)"
+    [[ -n ${name// /} ]] || name=$(usb_windows_db_name "${id,,}")
     rows+=$(jq -cn --arg id "${id,,}" --arg name "$name" \
       '{id: $id, name: ($name | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ") | if . == "" then $id else . end)}')$'\n'
   done

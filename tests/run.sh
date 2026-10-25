@@ -36,6 +36,9 @@ fake_usb() {
 fake_usb 1-3 093a 822a 00 GLORIOUS "Model O 2 Wireless"
 fake_usb 1-4 1b1c 2b0d 00 Corsair "CORSAIR VANGUARD 96"
 fake_usb usb1 1d6b 0002 09 Linux "xHCI Host Controller"
+fake_usb 1-14 8087 0033 e0 "" ""
+export OMARCHY_TOOL_USB_IDS="$work/usb.ids"
+printf '8087  Intel Corp.\n\t0032  AX210 Bluetooth\n\t0033  AX211 Bluetooth\n8088  Other\n' >"$OMARCHY_TOOL_USB_IDS"
 fake_hid() {
   mkdir -p "$OMARCHY_TOOL_HIDRAW_SYS/$1/device"
   printf 'HID_ID=%s\nHID_NAME=%s\n' "$2" "$3" >"$OMARCHY_TOOL_HIDRAW_SYS/$1/device/uevent"
@@ -219,7 +222,8 @@ rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
 # usb-windows: USB devices handed to the Windows VM, in the same compose.
 wu() { "$tool" status | jq -r ".modules[\"usb-windows\"]$1"; }
 check "usb-windows starts off" '[[ $(wu .enabled) == false && $(wu .summary) == Desactivado ]]'
-check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 2 ]] && [[ $(wu ".candidates[] | select(.id == \"093a:822a\") | .name") == "GLORIOUS Model O 2 Wireless" ]]'
+check "unnamed device gets its name from usb.ids" '[[ $(wu ".candidates[] | select(.id == \"8087:0033\") | .name") == "Intel Corp. AX211 Bluetooth" ]]'
+check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 3 ]] && [[ $(wu ".candidates[] | select(.id == \"093a:822a\") | .name") == "GLORIOUS Model O 2 Wireless" ]]'
 "$tool" usb-windows add 093A:822A
 check "adding while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
 "$tool" usb-windows enable
