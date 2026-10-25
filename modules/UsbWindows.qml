@@ -74,6 +74,18 @@ Column {
 
   Text {
     textFormat: Text.PlainText
+    visible: root.active
+    text: "Sin ratón: SUPER + ALT + U devuelve a Linux todo lo que esté en Windows, aunque Windows tenga el teclado."
+    color: root.fg
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    font.bold: true
+    wrapMode: Text.Wrap
+    width: parent.width
+  }
+
+  Text {
+    textFormat: Text.PlainText
     text: "No pases a Windows el teclado o el ratón que estás usando si no tienes otro a mano, ni el Bluetooth: Linux los pierde mientras estén allí."
     color: Commons.Color.urgent
     font.family: Style.font.family

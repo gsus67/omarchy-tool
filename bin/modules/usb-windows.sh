@@ -63,7 +63,16 @@ usb_windows_compose_args() {
 usb_windows_apply() {
   mkdir -p -- "$STATE_DIR"
   install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
+  hotkeys_sync
   compose_sync || fail "no se pudo cambiar la configuración de Windows"
+}
+
+# SUPER+ALT+U gives everything in Windows back to Linux, with no mouse needed.
+# dont_inhibit: it works even while the Windows window holds the keyboard.
+usb_windows_hotkeys() {
+  [[ -n $(usb_windows_desired) ]] || return 0
+  printf 'o.bind("SUPER + ALT + U", "Devolver periféricos a Linux", %s, { dont_inhibit = true })\n' \
+    "$(jq -Rn --arg cmd "$(printf '%q' "$TOOL_DIR/bin/omarchy-tool") usb-windows move linux --all" '$cmd')"
 }
 
 # QEMU of the running Omarchy Windows VM (dockurr/windows), if any.
@@ -102,22 +111,48 @@ usb_windows_in_windows() {
     (($(usb_windows_vm_started "$pid") >= $(compose_mtime)))
 }
 
-# move linux|windows <vvvv:pppp>
+usb_windows_notify() {
+  omarchy-notification-send -g "󰦬" "$@" >/dev/null 2>&1 || true
+}
+
+# move linux|windows <vvvv:pppp>, or move linux --all (the SUPER+ALT+U shortcut)
 usb_windows_move() {
-  local where=${1:-} id=${2:-} pid state action
-  id=${id,,}
-  [[ $where == linux || $where == windows ]] && usb_windows_valid_id "$id" ||
-    fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>"
+  local where=${1:-} arg=${2:-} pid state action id ids=()
+  [[ $where == linux || $where == windows ]] || fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>|--all"
   pid=$(usb_windows_vm_pid)
-  [[ -n $pid ]] || fail "Windows no está abierto"
+
+  if [[ $arg == --all && $where == linux ]]; then
+    if [[ -n $pid ]]; then
+      while IFS= read -r id; do
+        [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && ids+=("$id")
+      done < <(config_get -r '.modules["usb-windows"].devices // [] | .[] | .id')
+    fi
+    if ((${#ids[@]} == 0)); then
+      usb_windows_notify "Nada que devolver" "No hay periféricos en Windows."
+      return 0
+    fi
+  else
+    id=${arg,,}
+    usb_windows_valid_id "$id" || fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>|--all"
+    [[ -n $pid ]] || fail "Windows no está abierto"
+    ids=("$id")
+  fi
+
   action=attach
   [[ $where == linux ]] && action=detach
   mkdir -p -- "$STATE_DIR"
   install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
-  privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "$id" || fail "no se pudo mover el dispositivo"
+  if ! privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "${ids[@]}"; then
+    [[ $arg == --all ]] && usb_windows_notify -u critical "No se pudieron devolver los periféricos" "Prueba otra vez o cierra Windows."
+    fail "no se pudo mover el dispositivo"
+  fi
   state=$(usb_windows_live_state)
   [[ -f $state && $(head -n1 "$state") == "$pid" ]] || echo "$pid" >"$state"
-  if [[ $where == windows ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
+  for id in "${ids[@]}"; do
+    if [[ $where == windows ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
+  done
+  [[ $arg == --all ]] && usb_windows_notify "Periféricos devueltos a Linux" "${#ids[@]} dispositivo(s) de vuelta."
+  return 0
 }
 
 usb_windows_status() {

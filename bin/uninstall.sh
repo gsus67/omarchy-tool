@@ -63,6 +63,25 @@ if [[ -f $desktop ]] && grep '^Exec=' "$desktop" | grep -qF -- "$state_dir/windo
     mv -f -- "$tmp" "$desktop"
 fi
 
+# Keyboard shortcuts: our Lua file and the guarded line that loads it.
+hypr_dir="${OMARCHY_TOOL_HYPR_DIR:-$config_home/hypr}"
+rm -f -- "$hypr_dir/omarchy-tool.lua"
+mark="-- Added by omarchy-tool: keyboard shortcuts of its features, loaded only while they exist."
+if [[ -f $hypr_dir/hyprland.lua ]] && grep -qF -- "$mark" "$hypr_dir/hyprland.lua"; then
+  tmp=$(mktemp "$hypr_dir/hyprland.lua.XXXXXX") &&
+    awk -v mark="$mark" '
+      $0 == mark { skip = 1; next }
+      skip && /omarchy-tool\.lua/ { skip = 0; next }
+      { skip = 0; lines[++n] = $0 }
+      END {
+        while (n > 0 && lines[n] == "") n--
+        for (i = 1; i <= n; i++) print lines[i]
+      }
+    ' "$hypr_dir/hyprland.lua" >"$tmp" &&
+    mv -f -- "$tmp" "$hypr_dir/hyprland.lua"
+  [[ -z ${OMARCHY_TOOL_HYPR_DIR:-} ]] && hyprctl reload >/dev/null 2>&1 || true
+fi
+
 # Our Omarchy menu row (written by `omarchy-tool apply`, tagged by its id).
 if [[ -f $menu ]]; then
   sed -i '/^  "omarchy-tool": {.*omarchy-shell omarchy-tool toggle/d' "$menu"

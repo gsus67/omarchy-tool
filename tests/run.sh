@@ -21,6 +21,10 @@ export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
 export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
 export OMARCHY_TOOL_PRIV=""
+export OMARCHY_TOOL_HYPR_DIR="$work/hypr"
+mkdir -p "$OMARCHY_TOOL_HYPR_DIR"
+printf -- '-- user config\nrequire("hypr.bindings")\n' >"$OMARCHY_TOOL_HYPR_DIR/hyprland.lua"
+cp "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"
 export OMARCHY_TOOL_WINDOWS_SHARED="$work/Windows"
 export OMARCHY_TOOL_UDEV_RULES="$work/70-omarchy-tool-webhid.rules"
 export OMARCHY_TOOL_HIDRAW_SYS="$work/sys"
@@ -203,6 +207,7 @@ check "menu row sits before the closing brace" '[[ $(tail -n1 "$OMARCHY_TOOL_MEN
 check "apply installs the uninstaller" '[[ -x $OMARCHY_TOOL_STATE_DIR/uninstall.sh ]]'
 
 # Uninstall with disks shared: compose, menu, state and config all go.
+"$tool" usb-windows add 093a:822a && "$tool" usb-windows enable
 "$tool" windows-disks enable
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$repo"
 check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]] && grep -q ":/shared2" "$compose"'
@@ -210,6 +215,7 @@ bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstall restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
 check "uninstall removes the Windows folder" '[[ ! -e $winfolder ]]'
+check "uninstall removes the shortcut" '[[ ! -e $OMARCHY_TOOL_HYPR_DIR/omarchy-tool.lua ]] && cmp -s "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"'
 check "uninstall leaves the menu as it was" 'cmp -s "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"'
 
 # No VM installed: nothing to do, nothing written.
@@ -267,6 +273,21 @@ check "live helper refuses bad ids" '! bash "$repo/bin/usb-live.sh" attach "093a
 unset OMARCHY_TOOL_VM_PID OMARCHY_TOOL_VM_STARTED
 "$tool" usb-windows disable
 check "editor removes usb-host without id (v0.0.12)" 'sed -i "s|driftfix=slew\"|driftfix=slew -device usb-host,vendorid=0x093a,productid=0x822a\"|" "$compose" && bash "$repo/bin/compose-edit.sh" && cmp -s "$compose" "$work/compose-original"'
+# SUPER+ALT+U: a shortcut that bypasses the Windows window's keyboard grab.
+"$tool" usb-windows enable
+keys="$OMARCHY_TOOL_HYPR_DIR/omarchy-tool.lua"
+check "enable writes the shortcut" 'grep -q "^o.bind(\"SUPER + ALT + U\", \"Devolver periféricos a Linux\", .*usb-windows move linux --all\", { dont_inhibit = true })$" "$keys"'
+check "hyprland.lua loads it once" '"$tool" apply && [[ $(grep -c "omarchy-tool.lua" "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua") == 1 ]]'
+fake_bin2="$work/bin2"; mkdir -p "$fake_bin2"
+printf '#!/bin/bash\necho "$*" >>"%s/notify2.log"\n' "$work" >"$fake_bin2/omarchy-notification-send"; chmod +x "$fake_bin2/omarchy-notification-send"
+check "--all with nothing in Windows just says so" 'OMARCHY_TOOL_VM_PID=777 PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all && grep -q "Nada que devolver" "$work/notify2.log"'
+OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
+OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 1b1c:2b0d
+check "--all gives every device back in one call" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="echo" PATH="$fake_bin2:$PATH" "$tool" usb-windows move linux --all | grep -q "usb-live.sh detach 093a:822a 1b1c:2b0d$" && grep -q "Periféricos devueltos a Linux" "$work/notify2.log"'
+check "after --all nothing is in Windows" '[[ $(OMARCHY_TOOL_VM_PID=777 wu " | [.devices[] | select(.inWindows)] | length") == 0 ]]'
+"$tool" usb-windows disable
+check "disable removes the shortcut file" '[[ ! -e $keys ]]'
+check "disable leaves hyprland.lua as it was" 'cmp -s "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"'
 check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && ! "$tool" usb-windows add aaaa:0003 2>/dev/null'
 check "editor refuses bad usb ids" '! bash "$repo/bin/compose-edit.sh" --usb "1b1c:2b0d,x" 2>/dev/null && cmp -s "$compose" "$work/compose-original"'
 

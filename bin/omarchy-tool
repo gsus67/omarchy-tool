@@ -23,6 +23,7 @@ CONFIG_DIR="${OMARCHY_TOOL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy
 CONFIG_FILE="$CONFIG_DIR/config.json"
 STATE_DIR="${OMARCHY_TOOL_STATE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tool}"
 COMPOSE_FILE="${OMARCHY_TOOL_COMPOSE:-/var/lib/omarchy/windows/docker-compose.yml}"
+HYPR_DIR="${OMARCHY_TOOL_HYPR_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr}"
 MENU_FILE="${OMARCHY_TOOL_MENU_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc}"
 export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
 
@@ -157,6 +158,51 @@ compose_sync() {
   fi
 }
 
+# --- keyboard shortcuts --------------------------------------------------------
+#
+# A module offers <module>_hotkeys: Lua lines for Omarchy's Hyprland config
+# (o.bind ...). They go to $HYPR_DIR/omarchy-tool.lua, which one guarded line
+# in hyprland.lua loads only while it exists (the way hyprmoncfg loads its
+# monitors). No shortcuts left: both the file and that line go.
+
+HYPR_LOADER_MARK="-- Added by omarchy-tool: keyboard shortcuts of its features, loaded only while they exist."
+
+hotkeys_sync() {
+  local file="$HYPR_DIR/omarchy-tool.lua" main="$HYPR_DIR/hyprland.lua" lines='' name fn tmp before after
+  for name in $(module_names); do
+    fn=$(module_fn "$name" hotkeys)
+    has_fn "$fn" && lines+=$("$fn")
+  done
+
+  before=$(cat -- "$file" 2>/dev/null; grep -c -- "$HYPR_LOADER_MARK" "$main" 2>/dev/null || true)
+  if [[ -n $lines ]]; then
+    printf '%s\n%s\n' "-- Written by omarchy-tool. Deleted when its features are switched off." "$lines" >"$file"
+    if [[ -f $main ]] && ! grep -qF -- "$HYPR_LOADER_MARK" "$main"; then
+      printf '\n%s\n%s\n' "$HYPR_LOADER_MARK" \
+        'do local path = (os.getenv("XDG_CONFIG_HOME") or os.getenv("HOME") .. "/.config") .. "/hypr/omarchy-tool.lua"; local file = io.open(path, "r"); if file then file:close(); dofile(path) end end' >>"$main"
+    fi
+  else
+    rm -f -- "$file"
+    if [[ -f $main ]] && grep -qF -- "$HYPR_LOADER_MARK" "$main"; then
+      tmp=$(mktemp "$main.XXXXXX")
+      awk -v mark="$HYPR_LOADER_MARK" '
+        $0 == mark { skip = 1; next }
+        skip && /omarchy-tool\.lua/ { skip = 0; next }
+        { skip = 0; lines[++n] = $0 }
+        END {
+          while (n > 0 && lines[n] == "") n--
+          for (i = 1; i <= n; i++) print lines[i]
+        }
+      ' "$main" >"$tmp" && mv -f -- "$tmp" "$main"
+    fi
+  fi
+  after=$(cat -- "$file" 2>/dev/null; grep -c -- "$HYPR_LOADER_MARK" "$main" 2>/dev/null || true)
+
+  if [[ $before != "$after" && -z ${OMARCHY_TOOL_HYPR_DIR:-} ]] && command -v hyprctl >/dev/null; then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+}
+
 # --- modules -----------------------------------------------------------------
 
 module_names() {
@@ -247,6 +293,7 @@ cmd_apply() {
   local name fn status=0
   install_uninstaller
   menu_entry_apply
+  hotkeys_sync
   for name in $(module_names); do
     fn=$(module_fn "$name" apply)
     has_fn "$fn" || continue

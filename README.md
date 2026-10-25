@@ -79,6 +79,12 @@ Con el interruptor encendido, la VM recibe acceso a los USB (`/dev/bus/usb` en
 la próxima vez que abras Windows; los dispositivos siguen en Linux hasta que
 los pases. Al apagarlo, la configuración vuelve a quedar como estaba.
 
+**Sin ratón:** con la función encendida, **SUPER + ALT + U** devuelve a Linux
+todo lo que esté en Windows con una sola contraseña, aunque la ventana de
+Windows tenga el teclado (atajo con `dont_inhibit`). El atajo vive en
+`~/.config/hypr/omarchy-tool.lua`, que `hyprland.lua` carga con una línea
+protegida; al apagar la función o quitar el plugin se borran los dos.
+
 Con Windows abierto, la página muestra **Devolver a Linux** / **Pasar a
 Windows** para cada dispositivo: lo cambia al momento, sin cerrar Windows (cerrar
 la ventana apaga la VM y pierdes lo que tengas abierto). Usa el monitor de QEMU
@@ -121,6 +127,7 @@ omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
 omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
+omarchy-tool usb-windows move linux --all            # lo mismo que SUPER+ALT+U
 ```
 
 ## Añadir un módulo
