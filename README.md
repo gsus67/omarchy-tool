@@ -51,7 +51,7 @@ dos carpetas extra (`Data2` y `Data3`). Para usar otro, desmarca uno primero.
 Windows. Para tus discos eliges la letra en el panel (por defecto `X:` e `Y:`)
 y el plugin deja en Shared una carpeta **Omarchy Tool** con **Activar discos**,
 que hace lo mismo que hizo Omarchy (`net use X: \\host.lan\Data2
-/persistent:yes` y un acceso en el escritorio). Se abre una vez dentro de
+/persistent:yes` y un acceso en el escritorio), y además pone a cada unidad el nombre del disco en *Este equipo* (por ejemplo "Datos (X:)"). Se abre una vez dentro de
 Windows; si cambias letras o discos, se vuelve a abrir. **Quitar discos** lo
 deshace y, si el plugin está apagado o eliminado, se borra a sí mismo.
 
