@@ -1,16 +1,14 @@
 # shellcheck shell=bash
 # Module: usb-windows
 #
-# Hands chosen USB devices to Omarchy's Windows VM while it runs, so their
-# Windows-only apps (Glorious CORE, iCUE, ...) can see them. dockurr/windows
-# documents this as "-device usb-host,vendorid=...,productid=..." in ARGUMENTS
-# plus /dev/bus/usb in devices; compose_sync (bin/omarchy-tool) writes both
-# through bin/compose-edit.sh under pkexec. While Windows is open, Linux loses
-# those devices; they come back when the VM stops. Changes reach Windows the
-# next time it starts.
+# Lets chosen USB devices be handed to Omarchy's Windows VM, so their
+# Windows-only apps (Glorious CORE, iCUE, ...) can see them. Switched on, the
+# VM gets /dev/bus/usb (compose_sync in bin/omarchy-tool writes it through
+# bin/compose-edit.sh under pkexec; it takes effect when Windows next starts),
+# but every device stays in Linux until the user moves it.
 #
-# While Windows runs, `move linux|windows <id>` hands a device back to Linux
-# or over to Windows on the spot (bin/usb-live.sh through the QEMU monitor),
+# While Windows runs, `move linux|windows <id>` hands a device over to Windows
+# or back to Linux on the spot (bin/usb-live.sh through the QEMU monitor),
 # so nothing in Windows has to be closed. $STATE_DIR/usb-live.state remembers
 # those moves for the current VM run: its first line is the QEMU pid, then
 # "+id" (moved to Windows) or "-id" (moved back to Linux).
@@ -46,7 +44,8 @@ usb_windows_desired() {
 }
 
 usb_windows_compose_args() {
-  usb_windows_desired | sed 's/^/--usb /'
+  [[ -n $(usb_windows_desired) ]] && echo "--usb-bus on"
+  return 0
 }
 
 usb_windows_apply() {
@@ -77,8 +76,8 @@ usb_windows_live_state() {
   echo "$STATE_DIR/usb-live.state"
 }
 
-# Whether <id> is in Windows right now: taken at boot (in the compose that
-# was in place when this VM run started) unless moved since.
+# Whether <id> is in Windows right now: moved there during this VM run (or,
+# for a compose from v0.0.12-v0.0.13, taken at boot) and not moved back.
 usb_windows_in_windows() {
   local id=$1 pid=$2 state last
   state=$(usb_windows_live_state)
@@ -110,26 +109,29 @@ usb_windows_move() {
 }
 
 usb_windows_status() {
-  local enabled=false installed=false applied=false connected devices pid inwin='[]' id
+  local enabled=false installed=false applied=false connected devices pid inwin='[]' id ready=false
   usb_windows_enabled && enabled=true
   pid=$(usb_windows_vm_pid)
   if [[ -n $pid ]]; then
+    # This VM run started with /dev/bus/usb, so devices can be handed over.
+    grep -qx -- "--usb-bus on" <<<"$(compose_applied)" &&
+      (($(usb_windows_vm_started "$pid") >= $(compose_mtime))) && ready=true
     while IFS= read -r id; do
       [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && inwin=$(jq -c --arg id "$id" '. + [$id]' <<<"$inwin")
     done < <(config_get -r '.modules["usb-windows"].devices // [] | .[] | .id')
   fi
   [[ -f $COMPOSE_FILE ]] && installed=true
-  compose_in_sync --usb && applied=true
+  compose_in_sync --usb-bus && applied=true
   connected=$(usb_windows_connected_json)
   devices=$(config_get -c '.modules["usb-windows"].devices // []')
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson connected "$connected" --argjson devices "$devices" --argjson max "$USB_WINDOWS_MAX" \
-    --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" \
-    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running,
+    --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" --argjson ready "$ready" \
+    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running, liveReady: $ready,
       devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id), inWindows: any($inwin[]; . == $d.id)}],
       candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id)}],
       summary: (if ($installed | not) then "Windows no está instalado"
-        elif $enabled then ($devices | length | tostring) + " en Windows" else "Desactivado" end)}'
+        elif $enabled then ($inwin | length | tostring) + " en Windows" else "Desactivado" end)}'
 }
 
 usb_windows_enable() {

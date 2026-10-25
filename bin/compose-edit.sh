@@ -3,7 +3,7 @@
 # Sets what omarchy-tool adds to Omarchy's Windows VM compose. Run as root
 # through pkexec by omarchy-tool and by uninstall.sh.
 #
-#   compose-edit.sh [--share FOLDER]... [--usb VVVV:PPPP]...
+#   compose-edit.sh [--share FOLDER]... [--usb VVVV:PPPP]... [--usb-bus on]
 #
 #   --share  up to 2 folders; the first becomes \\host.lan\Data2 and the second
 #            \\host.lan\Data3 in Windows (dockurr/windows serves /shared2 and
@@ -11,6 +11,8 @@
 #   --usb    up to 4 USB devices handed to Windows while the VM runs: a
 #            "-device usb-host" in ARGUMENTS plus /dev/bus/usb in devices, as
 #            dockurr/windows documents for USB passthrough.
+#   --usb-bus on  only /dev/bus/usb, so devices can be handed to the running
+#            VM on demand (usb-live.sh) without any being taken at boot.
 #
 # No options removes all of it. Only our own pieces are ever touched: the
 # /shared2 and /shared3 binds, the usb-host devices in ARGUMENTS and the
@@ -31,6 +33,7 @@ fi
 
 shares=()
 usbs=()
+usb_bus=false
 while (($#)); do
   case $1 in
     --share)
@@ -52,6 +55,11 @@ while (($#)); do
       usbs+=("$2")
       shift 2
       ;;
+    --usb-bus)
+      [[ ${2:-} == on ]] || fail "--usb-bus takes: on"
+      usb_bus=true
+      shift 2
+      ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -61,6 +69,11 @@ done
 [[ -f $compose && ! -L $compose ]] || exit 0
 [[ $(grep -c '^[[:space:]]*-[[:space:]]*[^[:space:]].*:/shared$' "$compose") == 1 ]] ||
   fail "unexpected compose layout (/shared)"
+((${#usbs[@]})) && usb_bus=true
+if [[ $usb_bus == true ]]; then
+  [[ $(grep -c '^[[:space:]]*-[[:space:]]*/dev/net/tun[[:space:]]*$' "$compose") == 1 ]] ||
+    fail "unexpected compose layout (devices)"
+fi
 if ((${#usbs[@]})); then
   [[ $(grep -c '^[[:space:]]*ARGUMENTS:[[:space:]]*".*"[[:space:]]*$' "$compose") == 1 ]] ||
     fail "unexpected compose layout (ARGUMENTS)"
@@ -84,7 +97,7 @@ done
 
 tmp=$(mktemp "$compose.XXXXXX")
 trap 'rm -f -- "$tmp"' EXIT
-awk -v shares="$share_rows" -v usb_args="$usb_args" '
+awk -v shares="$share_rows" -v usb_args="$usb_args" -v usb_bus="$usb_bus" '
   # Ours from an earlier run: dropped, then written again below if wanted.
   /^[[:space:]]*-[[:space:]]*"?[^[:space:]].*:\/shared[23]"?[[:space:]]*$/ { next }
   /^[[:space:]]*-[[:space:]]*\/dev\/bus\/usb[[:space:]]+# omarchy-tool[[:space:]]*$/ { next }
@@ -96,7 +109,7 @@ awk -v shares="$share_rows" -v usb_args="$usb_args" '
   }
   { print }
   /^[[:space:]]*-[[:space:]]*[^[:space:]].*:\/shared$/ && shares != "" { print shares }
-  /^[[:space:]]*-[[:space:]]*\/dev\/net\/tun[[:space:]]*$/ && usb_args != "" {
+  /^[[:space:]]*-[[:space:]]*\/dev\/net\/tun[[:space:]]*$/ && usb_bus == "true" {
     match($0, /^[[:space:]]*/)
     print substr($0, 1, RLENGTH) "- /dev/bus/usb # omarchy-tool"
   }

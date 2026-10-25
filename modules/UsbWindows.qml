@@ -43,7 +43,7 @@ Column {
     textFormat: Text.PlainText
     text: root.status.vmInstalled === false
       ? "Instala Windows desde el menú de Omarchy para usar esto."
-      : "Windows usa estos dispositivos como si estuvieran enchufados a él, para apps que solo existen en Windows (Glorious CORE, iCUE...). Mientras Windows esté abierto, Linux no los tiene. Los cambios piden tu contraseña y se ven al volver a abrir Windows."
+      : "Para apps que solo existen en Windows (Glorious CORE, iCUE...). Con el interruptor encendido, Windows queda preparado la próxima vez que lo abras; los dispositivos siguen en Linux hasta que pulses \"Pasar a Windows\". Mientras estén en Windows, Linux no los tiene."
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall
@@ -100,7 +100,7 @@ Column {
   // While Windows runs: hand each device back and forth without closing it.
   Text {
     textFormat: Text.PlainText
-    visible: root.status.vmRunning === true && (root.status.devices || []).length > 0
+    visible: root.active && root.status.vmRunning === true && (root.status.devices || []).length > 0
     text: "Windows está abierto"
     color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
@@ -109,8 +109,19 @@ Column {
     topPadding: Style.space(4)
   }
 
+  Text {
+    textFormat: Text.PlainText
+    visible: root.active && root.status.vmRunning === true && root.status.liveReady !== true
+    text: "Windows se abrió antes de preparar esto: ciérralo y ábrelo una vez para poder pasarle dispositivos."
+    color: Qt.darker(root.fg, 1.5)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    wrapMode: Text.Wrap
+    width: parent.width
+  }
+
   Repeater {
-    model: root.status.vmRunning === true ? (root.status.devices || []) : []
+    model: root.active && root.status.liveReady === true ? (root.status.devices || []) : []
 
     Item {
       required property var modelData

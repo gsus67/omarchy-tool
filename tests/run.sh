@@ -223,23 +223,24 @@ check "lists USB devices, hubs left out" '[[ $(wu ".candidates | length") == 2 ]
 "$tool" usb-windows add 093A:822A
 check "adding while off leaves the compose alone" 'cmp -s "$compose" "$work/compose-original"'
 "$tool" usb-windows enable
-check "enable adds usb-host to ARGUMENTS" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew -device usb-host,id=omt093a822a,vendorid=0x093a,productid=0x822a\"" "$compose"'
+check "enable leaves ARGUMENTS alone (nothing taken at boot)" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
 check "enable adds /dev/bus/usb after /dev/net/tun" '[[ $(grep -A1 "/dev/net/tun$" "$compose" | tail -n1) == "      - /dev/bus/usb # omarchy-tool" ]]'
-check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "1 en Windows" ]]'
+check "usb status applied" '[[ $(wu .applied) == true && $(wu .summary) == "0 en Windows" ]]'
 
 # Disks and USB live side by side; one change never drops the other.
 "$tool" windows-disks add "$work/disk-a" DiskA
 "$tool" windows-disks enable
-check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "usb-host" "$compose"'
+check "disks and usb together" 'grep -q ":/shared2\"$" "$compose" && grep -q "/dev/bus/usb # omarchy-tool" "$compose"'
 check "both modules report applied" '[[ $(wu .applied) == true && $(wd .applied) == true ]]'
 "$tool" usb-windows add 1b1c:2b0d
-check "second usb device appended" 'grep -q "productid=0x822a -device usb-host,id=omt1b1c2b0d,vendorid=0x1b1c,productid=0x2b0d\"" "$compose" && [[ $(grep -c "/dev/bus/usb" "$compose") == 1 ]]'
+check "second usb device keeps one bus line" '[[ $(grep -c "/dev/bus/usb" "$compose") == 1 ]]'
+check "editor still writes boot devices with ids" 'bash "$repo/bin/compose-edit.sh" --usb 093a:822a && grep -q "driftfix=slew -device usb-host,id=omt093a822a,vendorid=0x093a,productid=0x822a\"" "$compose" && "$tool" apply'
 "$tool" usb-windows disable
 check "usb off keeps the disks" 'grep -q ":/shared2\"$" "$compose" && ! grep -q "usb-host\|/dev/bus/usb" "$compose"'
 check "ARGUMENTS back to Omarchy's" 'grep -qxF "      ARGUMENTS: \"-rtc base=localtime,clock=host,driftfix=slew\"" "$compose"'
 "$tool" usb-windows enable
 "$tool" windows-disks disable
-check "disks off keeps usb" '! grep -q ":/shared2" "$compose" && grep -q "usb-host" "$compose"'
+check "disks off keeps usb" '! grep -q ":/shared2" "$compose" && grep -q "/dev/bus/usb" "$compose"'
 "$tool" usb-windows disable
 check "all off restores the compose" 'cmp -s "$compose" "$work/compose-original" && [[ ! -e $OMARCHY_TOOL_STATE_DIR/compose.applied ]]'
 # Live moves while Windows runs (privileged helper stubbed out with "true").
@@ -247,16 +248,16 @@ check "no VM running: move is refused" 'OMARCHY_TOOL_VM_PID="" ; ! OMARCHY_TOOL_
 "$tool" usb-windows enable
 export OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_VM_STARTED=$(( $(stat -c %Y "$compose") + 5 ))
 check "VM running: status shows it" '[[ $(wu .vmRunning) == true ]]'
-check "taken at boot: device is in Windows" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == true ]]'
-OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move linux 093a:822a
-check "moved to Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
+check "VM started after the change is ready" '[[ $(wu .liveReady) == true ]]'
+check "devices start in Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
-check "moved back to Windows" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == true ]]'
+check "moved to Windows" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == true && $(wu .summary) == "1 en Windows" ]]'
 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move linux 093a:822a
+check "moved back to Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
+OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move windows 093a:822a
 export OMARCHY_TOOL_VM_PID=5151
-check "a new VM run forgets old moves" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == true ]]'
-export OMARCHY_TOOL_VM_STARTED=$(( $(stat -c %Y "$compose") - 5 ))
-check "VM started before the change: not in Windows yet" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
+check "VM started before the change is not ready" 'OMARCHY_TOOL_VM_STARTED=1 && [[ $(OMARCHY_TOOL_VM_STARTED=1 wu .liveReady) == false ]]'
+check "a new VM run starts with devices in Linux" '[[ $(wu ".devices[] | select(.id == \"093a:822a\") | .inWindows") == false ]]'
 check "failed move is reported" '! OMARCHY_TOOL_PRIV="false" "$tool" usb-windows move windows 093a:822a 2>/dev/null'
 check "live helper refuses bad ids" '! bash "$repo/bin/usb-live.sh" attach "093a:822a;x" 2>/dev/null'
 unset OMARCHY_TOOL_VM_PID OMARCHY_TOOL_VM_STARTED

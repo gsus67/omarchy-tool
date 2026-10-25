@@ -84,17 +84,17 @@ vayas a configurar y desmárcalo al terminar si quieres.
 
 ### USB a Windows
 
-Pasa los dispositivos USB que marques a la VM de Windows de Omarchy mientras
-está abierta, para usar apps que solo existen en Windows (por ejemplo
-**Glorious CORE** con un ratón Glorious Model O 2). Windows los ve como si
-estuvieran enchufados a él; **mientras Windows esté abierto, Linux no los
-tiene**, y vuelven a Linux al cerrarlo. Máximo 4 dispositivos.
+Pasa los dispositivos USB que marques a la VM de Windows de Omarchy cuando tú
+quieras, para usar apps que solo existen en Windows (por ejemplo **Glorious
+CORE** con un ratón Glorious Model O 2). Windows los ve como si estuvieran
+enchufados a él; **mientras estén en Windows, Linux no los tiene** (un USB solo
+puede estar en un sistema a la vez). Máximo 4 dispositivos.
 
-Es el método que documenta `dockurr/windows`: `-device usb-host,...` en
-`ARGUMENTS` y `/dev/bus/usb` en `devices` de la configuración de la VM. Lo
-escribe el mismo `bin/compose-edit.sh` que los discos, en una sola llamada con
-`pkexec`, y se ve al volver a abrir Windows. Al apagarlo, la configuración
-vuelve a quedar como estaba.
+Con el interruptor encendido, la VM recibe acceso a los USB (`/dev/bus/usb` en
+`devices`, como documenta `dockurr/windows`), escrito por el mismo
+`bin/compose-edit.sh` que los discos en una sola llamada con `pkexec`. Se nota
+la próxima vez que abras Windows; los dispositivos siguen en Linux hasta que
+los pases. Al apagarlo, la configuración vuelve a quedar como estaba.
 
 Con Windows abierto, la página muestra **Devolver a Linux** / **Pasar a
 Windows** para cada dispositivo: lo cambia al momento, sin cerrar Windows (cerrar
