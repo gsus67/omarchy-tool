@@ -26,7 +26,16 @@ done
 
 pid=$(docker inspect --format '{{.State.Pid}}' omarchy-windows 2>/dev/null) || fail "Windows no está abierto"
 [[ $pid =~ ^[1-9][0-9]*$ ]] || fail "Windows no está abierto"
-socket="/proc/$pid/root/run/shm/monitor.sock"
+# QEMU listens on /run/shm/monitor.sock inside the container, where /run/shm
+# is usually a symlink to /dev/shm. Through /proc/<pid>/root an absolute
+# symlink would resolve on the host, so follow it inside the container here.
+root="/proc/$pid/root"
+shm="$root/run/shm"
+if [[ -L $shm ]]; then
+  target=$(readlink -- "$shm")
+  [[ $target == /* ]] && shm="$root$target" || shm="$root/run/$target"
+fi
+socket="$shm/monitor.sock"
 [[ -S $socket ]] || fail "no se encontró el control de la VM"
 
 monitor() {
