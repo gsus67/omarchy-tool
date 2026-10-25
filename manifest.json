@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "omarchy-tool",
   "name": "Omarchy Tool",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": "Omarchy Tool contributors",
   "license": "MIT",
   "description": "Personal toolbox for Omarchy: a bar panel with switchable modules. First module: share your disks with the Windows VM on \\\\host.lan.",

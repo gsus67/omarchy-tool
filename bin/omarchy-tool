@@ -162,6 +162,17 @@ main() {
   local command=${1:-}
   [[ $# -gt 0 ]] && shift
 
+  # Changes run one at a time: the panel applies at shell start on every
+  # monitor, and a password prompt must never show twice. Later runs then
+  # find nothing left to do.
+  case $command in
+    status | modules | version | --version | "" | help | -h | --help | self-update | uninstall) ;;
+    *)
+      exec 8>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool.lock"
+      flock 8
+      ;;
+  esac
+
   case $command in
     status) cmd_status ;;
     apply) cmd_apply ;;

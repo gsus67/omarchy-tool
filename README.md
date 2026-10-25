@@ -38,11 +38,14 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 
 ### Windows
 
-Comparte hasta 2 discos con la VM de Windows de Omarchy igual que Omarchy
+Comparte discos con la VM de Windows de Omarchy igual que Omarchy
 comparte `~/Windows`: como carpetas de red en `\\host.lan` (`Data2` y `Data3`,
 junto a la `Data` de Omarchy). En Windows les puedes poner letra con *Conectar
 unidad de red*. Marca los discos montados en `/mnt`, `/media` o `/run/media`, o
 añade una carpeta por su ruta (también vale `/home`).
+
+**Máximo 2 discos activados a la vez**, porque la imagen de Windows solo sirve
+dos carpetas extra (`Data2` y `Data3`). Para usar otro, desmarca uno primero.
 
 Cómo funciona: la imagen `dockurr/windows` que usa Omarchy sirve `/shared2` y
 `/shared3` si existen. El plugin añade esas dos líneas a la configuración de la
