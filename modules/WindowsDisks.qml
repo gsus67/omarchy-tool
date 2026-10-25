@@ -4,7 +4,8 @@ import qs.Commons as Commons
 import qs.Ui
 
 // Module: windows-disks page. The on/off switch lives on the panel's list;
-// here the user ticks mounted disks or adds any folder by path.
+// here the user ticks up to two mounted disks (or any folder by path). Each
+// one shows the \\host.lan share it becomes inside Windows.
 Column {
   id: root
 
@@ -24,6 +25,10 @@ Column {
     var disks = status.disks || []
     var savedNames = {}
     for (var d = 0; d < disks.length; d++) savedNames[disks[d].path] = disks[d]
+    function detail(path, extra, saved) {
+      var text = saved && saved.share ? saved.share + " · " + path : path
+      return text + extra
+    }
     for (var i = 0; i < candidates.length; i++) {
       var c = candidates[i]
       seen[c.path] = true
@@ -31,7 +36,7 @@ Column {
       list.push({
         path: c.path,
         name: saved ? saved.name : (c.label || c.path.split("/").pop()),
-        detail: c.path + (c.size ? " · " + c.size : ""),
+        detail: detail(c.path, c.size ? " · " + c.size : "", saved),
         selected: c.selected === true,
         label: c.label || ""
       })
@@ -41,7 +46,7 @@ Column {
       list.push({
         path: disks[j].path,
         name: disks[j].name,
-        detail: disks[j].path + (disks[j].available ? "" : " · no conectado"),
+        detail: detail(disks[j].path, disks[j].available ? "" : " · no conectado", disks[j]),
         selected: true,
         label: ""
       })
@@ -66,7 +71,7 @@ Column {
   Text {
     textFormat: Text.PlainText
     text: root.vmInstalled
-      ? "Con el interruptor encendido, al abrir Windows desde Omarchy se conectan los discos marcados."
+      ? "Marca hasta 2 discos. En Windows salen en \\\\host.lan, como la carpeta Shared, y les puedes poner letra con \"Conectar unidad de red\". Los cambios se ven al volver a abrir Windows y piden tu contraseña."
       : "Instala Windows desde el menú de Omarchy para usar esto."
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
@@ -77,7 +82,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
-    text: "Discos"
+    text: "Discos (" + (root.status.disks ? root.status.disks.length : 0) + " de " + (root.status.max || 2) + ")"
     color: Qt.darker(root.fg, 1.4)
     font.family: Style.font.family
     font.pixelSize: Style.font.caption

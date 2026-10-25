@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Backend tests for omarchy-tool. Runs against a throwaway config, state and
-# applications dir, so it never touches the real system.
+# Backend tests for omarchy-tool. Runs against a throwaway config, state,
+# applications dir, menu and VM compose, so it never touches the real system.
+# The privileged compose writer runs unprivileged here (OMARCHY_TOOL_PRIV="").
 #
 #   tests/run.sh
 
@@ -9,14 +10,18 @@ set -uo pipefail
 
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tool="$repo/bin/omarchy-tool"
-work=$(mktemp -d)
+# Shared folders must live under /home, /mnt, /media or /run/media.
+mkdir -p "$HOME/.cache"
+work=$(mktemp -d "$HOME/.cache/omarchy-tool-test.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 
 export OMARCHY_TOOL_CONFIG_DIR="$work/config"
 export OMARCHY_TOOL_STATE_DIR="$work/my state"
 export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
 export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
-mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/back\\slash"
+export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
+export OMARCHY_TOOL_PRIV=""
+mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/disk-c"
 
 desktop="$OMARCHY_TOOL_APPLICATIONS_DIR/windows-vm.desktop"
 cat >"$desktop" <<'EOF'
@@ -26,6 +31,19 @@ Exec=uwsm app -- omarchy-windows-vm launch
 Icon=windows
 Type=Application
 EOF
+
+compose="$OMARCHY_TOOL_COMPOSE"
+cat >"$compose" <<'EOF'
+services:
+  windows:
+    image: dockurr/windows
+    volumes:
+      - /var/lib/omarchy/windows/mounts/users/1000/storage:/storage
+      - /var/lib/omarchy/windows/mounts/users/1000/shared:/shared
+    restart: "no"
+EOF
+chmod 0640 "$compose"
+cp "$compose" "$work/compose-original"
 
 cat >"$OMARCHY_TOOL_MENU_FILE" <<'EOF'
 {
@@ -39,98 +57,114 @@ failures=0
 pass() { echo "ok   - $1"; }
 bad() { echo "FAIL - $1"; failures=$((failures + 1)); }
 check() { if eval "$2"; then pass "$1"; else bad "$1"; fi; }
+wd() { "$tool" status | jq -r ".modules[\"windows-disks\"]$1"; }
 
-check "status is valid JSON" '"$tool" status | jq -e ".modules[\"windows-disks\"].enabled == false" >/dev/null'
-check "summary says disabled" '[[ $("$tool" status | jq -r ".modules[\"windows-disks\"].summary") == Desactivado ]]'
-check "starts with no disks" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 0 ]]'
+check "status is valid JSON" '[[ $(wd .enabled) == false ]]'
+check "summary says disabled" '[[ $(wd .summary) == Desactivado ]]'
+check "starts with no disks" '[[ $(wd ".disks | length") == 0 ]]'
 
+# Choosing disks while off only saves the choice.
 "$tool" windows-disks add "$work/disk-a" DiskA
 "$tool" windows-disks add "$work/disk b/" "Disk B"
-check "adds two disks" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 2 ]]'
-check "trailing slash is stripped" '"$tool" status | jq -e --arg p "$work/disk b" "any(.modules[\"windows-disks\"].disks[]; .path == \$p)" >/dev/null'
-check "re-adding a path replaces it" '"$tool" windows-disks add "$work/disk-a" DiskA2 && [[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 2 ]]'
-
-check "rejects comma paths" '! "$tool" windows-disks add "/tmp/a,b" X 2>/dev/null'
-check "rejects sharing /" '! "$tool" windows-disks add / X 2>/dev/null && ! "$tool" windows-disks add // X 2>/dev/null'
-check "rejects missing folder" '! "$tool" windows-disks add "$work/nope" X 2>/dev/null'
-check "unsafe name characters are replaced" '"$tool" windows-disks add "$work/disk-a" "a,b" && [[ $("$tool" status | jq -r --arg p "$work/disk-a" ".modules[\"windows-disks\"].disks[] | select(.path == \$p).name") == "a_b" ]]'
+check "adds two disks" '[[ $(wd ".disks | length") == 2 ]]'
+check "trailing slash is stripped" '[[ $(wd ".disks[1].path") == "$work/disk b" ]]'
+check "disks get Data2 and Data3" '[[ $(wd ".disks[0].share") == "\\\\host.lan\\Data2" && $(wd ".disks[1].share") == "\\\\host.lan\\Data3" ]]'
+check "compose untouched while off" 'cmp -s "$compose" "$work/compose-original"'
+check "third disk is refused" '! "$tool" windows-disks add "$work/disk-c" C 2>/dev/null && [[ $(wd ".disks | length") == 2 ]]'
+check "re-adding a saved disk is allowed" '"$tool" windows-disks add "$work/disk-a" DiskA'
+check "unsafe name characters are replaced" '"$tool" windows-disks add "$work/disk-a" "a,b" && [[ $(wd ".disks[1].name") == a_b ]]'
+"$tool" windows-disks remove "$work/disk-a"
+"$tool" windows-disks remove "$work/disk b"
 "$tool" windows-disks add "$work/disk-a" DiskA
+"$tool" windows-disks add "$work/disk b" "Disk B"
 
-check "no rdp args while disabled" '[[ -z $("$tool" windows-disks rdp-args) ]]'
-check "desktop untouched while disabled" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
+check "rejects folders outside disk/home roots" '! "$tool" windows-disks add /etc X 2>/dev/null && ! "$tool" windows-disks add /tmp X 2>/dev/null'
+check "rejects sharing /" '! "$tool" windows-disks add / X 2>/dev/null && ! "$tool" windows-disks add // X 2>/dev/null'
+check "rejects colon paths" 'mkdir -p "$work/a:b" && ! "$tool" windows-disks add "$work/a:b" X 2>/dev/null'
+check "rejects missing folder" '! "$tool" windows-disks add "$work/nope" X 2>/dev/null'
 
+# On: both folders become /shared2 and /shared3 right after Omarchy's /shared.
 "$tool" windows-disks enable
-launcher="$OMARCHY_TOOL_STATE_DIR/windows-vm-launch"
-check "enable points Windows entry at quoted launcher" 'grep -qxF "Exec=uwsm app -- \"$launcher\"" "$desktop"'
-check "launcher is executable" '[[ -x $launcher ]]'
-check "status reports applied" '"$tool" status | jq -e ".modules[\"windows-disks\"].applied" >/dev/null'
-check "rdp args list both disks" '[[ $("$tool" windows-disks rdp-args | wc -l) == 2 ]]'
-check "rdp arg keeps spaces" 'grep -qxF "/drive:Disk B,$work/disk b" <<<"$("$tool" windows-disks rdp-args)"'
-check "apply is idempotent" '"$tool" apply && [[ $(grep -c "^Exec=" "$desktop") == 1 ]]'
+check "enable adds /shared2" 'grep -qxF "      - \"$work/disk-a:/shared2\"" "$compose"'
+check "enable adds /shared3" 'grep -qxF "      - \"$work/disk b:/shared3\"" "$compose"'
+check "shares sit right after /shared" '[[ $(grep -A1 ":/shared$" "$compose" | tail -n1) == *":/shared2\"" ]]'
+check "Omarchy mounts kept" 'grep -q ":/storage$" "$compose" && [[ $(grep -c ":/shared$" "$compose") == 1 ]]'
+check "compose mode kept" '[[ $(stat -c %a "$compose") == 640 ]]'
+check "status reports applied" '[[ $(wd .applied) == true ]]'
+check "summary counts disks" '[[ $(wd .summary) == "Comparte 2 discos" ]]'
 
-rmdir "$work/disk-a"
-check "missing disk is skipped" '[[ $("$tool" windows-disks rdp-args | wc -l) == 1 ]]'
-mkdir "$work/disk-a"
+before=$(md5sum <"$compose")
+OMARCHY_TOOL_PRIV="false" "$tool" apply
+check "apply does not rewrite when nothing changed" '[[ $(md5sum <"$compose") == "$before" ]]'
 
-# Omarchy rewrote the entry (e.g. reinstalled Windows): apply re-takes it.
-sed -i 's|^Exec=.*|Exec=uwsm app -- omarchy-windows-vm launch|' "$desktop"
+# Omarchy rewrote the compose (Windows reinstalled): apply puts the shares back.
+cp "$work/compose-original" "$compose"
+touch -d "+1 minute" "$compose"
+check "status notices a rewritten compose" '[[ $(wd .applied) == false ]]'
 "$tool" apply
-check "apply re-takes a rewritten entry" 'grep -qxF "Exec=uwsm app -- \"$launcher\"" "$desktop"'
-
-"$tool" windows-disks disable
-check "disable restores stock entry" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
-check "disable removes the launcher" '[[ ! -e $launcher && ! -e $OMARCHY_TOOL_STATE_DIR/windows-vm.exec ]]'
-check "disable keeps disk choices" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") -gt 0 ]]'
-check "other desktop lines kept" 'grep -qx "Icon=windows" "$desktop" && grep -qx "Name=Windows" "$desktop"'
-
-# An unquoted launcher from a v0.0.1 test build still counts as ours.
-sed -i "s|^Exec=.*|Exec=uwsm app -- $launcher|" "$desktop"
-"$tool" windows-disks enable
-"$tool" windows-disks disable
-check "legacy unquoted entry restores to stock" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
-
-"$tool" windows-disks add "$work/back\\slash" Back
-check "backslash path round-trips" '"$tool" status | jq -e --arg p "$work/back\\slash" "any(.modules[\"windows-disks\"].disks[]; .path == \$p and .available)" >/dev/null'
-"$tool" windows-disks remove "$work/back\\slash"
+check "apply re-adds shares after a rewrite" '[[ $(grep -c ":/shared[23]\"$" "$compose") == 2 ]]'
 
 "$tool" windows-disks remove "$work/disk-a"
-check "remove drops a disk" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 1 ]]'
+check "removing a disk renumbers the rest" 'grep -qxF "      - \"$work/disk b:/shared2\"" "$compose" && ! grep -q ":/shared3" "$compose"'
+"$tool" windows-disks add "$work/disk-a" DiskA
 
-# The shim forwards Omarchy's args and appends the drives.
-"$tool" windows-disks enable
-fake_bin="$work/bin"
-mkdir -p "$fake_bin"
-printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' >"$fake_bin/xfreerdp3"
-chmod +x "$fake_bin/xfreerdp3"
-out=$(PATH="$repo/bin/shims:$fake_bin:$PATH" xfreerdp3 /v:127.0.0.1:3389 /title:"Windows VM")
-check "shim keeps original args" 'grep -qx "/title:Windows VM" <<<"$out"'
-check "shim appends drives" 'grep -qxF "/drive:Disk B,$work/disk b" <<<"$out"'
+# Off: compose back to exactly what Omarchy wrote, our record gone.
+"$tool" windows-disks disable
+check "disable restores the compose" 'cmp -s "$compose" "$work/compose-original"'
+check "disable removes the record" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied ]]'
+check "disable keeps disk choices" '[[ $(wd ".disks | length") == 2 ]]'
+
+# A cancelled password prompt leaves things as they were and reports it.
+check "failed privileged write is reported" '! OMARCHY_TOOL_PRIV="false" "$tool" windows-disks enable 2>/dev/null'
+check "failed write changes nothing" 'cmp -s "$compose" "$work/compose-original" && [[ $(wd .applied) == false ]]'
+"$tool" windows-disks disable
+
+# The root writer refuses anything else, even when called directly.
+check "writer refuses three folders" '! bash "$repo/bin/compose-shares.sh" "$work/disk-a" "$work/disk b" "$work/disk-c" 2>/dev/null'
+check "writer refuses dot-dot paths" '! bash "$repo/bin/compose-shares.sh" "/home/../etc" 2>/dev/null'
+check "writer refuses quotes" 'mkdir -p "$work/q\"x" && ! bash "$repo/bin/compose-shares.sh" "$work/q\"x" 2>/dev/null'
+check "writer refuses symlinked paths" 'ln -s /etc "$work/link" && ! bash "$repo/bin/compose-shares.sh" "$work/link/ssl" 2>/dev/null'
+check "add refuses symlinked paths" '! "$tool" windows-disks add "$work/link/ssl" X 2>/dev/null'
+check "writer left compose alone" 'cmp -s "$compose" "$work/compose-original"'
+
+# Upgrade from the RDP versions: the Windows entry goes back to Omarchy.
+mkdir -p "$OMARCHY_TOOL_STATE_DIR"
+printf '#!/bin/bash\n' >"$OMARCHY_TOOL_STATE_DIR/windows-vm-launch"
+echo "uwsm app -- omarchy-windows-vm launch" >"$OMARCHY_TOOL_STATE_DIR/windows-vm.exec"
+sed -i "s|^Exec=.*|Exec=uwsm app -- \"$OMARCHY_TOOL_STATE_DIR/windows-vm-launch\"|" "$desktop"
+"$tool" apply
+check "old RDP launcher entry is restored" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
+check "old RDP launcher is deleted" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/windows-vm-launch && ! -e $OMARCHY_TOOL_STATE_DIR/windows-vm.exec ]]'
+check "desktop lines kept" 'grep -qx "Icon=windows" "$desktop" && grep -qx "Name=Windows" "$desktop"'
 
 # apply: menu row and uninstaller copy.
-"$tool" apply
 "$tool" apply
 check "apply adds one menu row" '[[ $(grep -c "^  \"omarchy-tool\": {" "$OMARCHY_TOOL_MENU_FILE") == 1 ]]'
 check "menu row sits before the closing brace" '[[ $(tail -n1 "$OMARCHY_TOOL_MENU_FILE") == "}" ]] && grep -q "\"personal\"" "$OMARCHY_TOOL_MENU_FILE"'
 check "apply installs the uninstaller" '[[ -x $OMARCHY_TOOL_STATE_DIR/uninstall.sh ]]'
 
-# The uninstaller does nothing while the plugin folder exists.
+# Uninstall with disks shared: compose, menu, state and config all go.
+"$tool" windows-disks enable
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$repo"
-check "uninstaller is a no-op while plugin exists" '[[ -e $launcher ]] && grep -qF "windows-vm-launch" "$desktop"'
-
-# Plugin removed: the launcher cleans up, then opens Windows the stock way.
-printf '#!/bin/bash\necho "stock $*"\n' >"$fake_bin/omarchy-windows-vm"
-chmod +x "$fake_bin/omarchy-windows-vm"
-sed "s|^tool=.*|tool=$work/missing/omarchy-tool|" "$launcher" >"$work/launcher-orphan"
-check "orphaned launcher opens Windows the stock way" '[[ $(PATH="$fake_bin:$PATH" bash "$work/launcher-orphan" --keep-alive) == "stock launch --keep-alive" ]]'
-check "uninstall restores the Windows entry" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
-check "uninstall keeps other desktop lines" 'grep -qx "Icon=windows" "$desktop"'
+check "uninstaller is a no-op while plugin exists" '[[ -e $OMARCHY_TOOL_STATE_DIR/windows-disks.applied ]] && grep -q ":/shared2" "$compose"'
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
+check "uninstall restores the compose" 'cmp -s "$compose" "$work/compose-original"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
 check "uninstall leaves the menu as it was" 'cmp -s "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"'
 
-check "self-update skips a dev checkout" '"$tool" self-update'
+# No VM installed: nothing to do, nothing written.
+mv "$compose" "$work/compose-away"
+check "status reports no VM" '[[ $(wd .vmInstalled) == false && $(wd .summary) == "Windows no está instalado" ]]'
+check "apply without VM succeeds" '"$tool" windows-disks enable'
+mv "$work/compose-away" "$compose"
+rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
+
 # self-update from an install under Omarchy's plugin folder: a newer commit
 # on the remote gets pulled through Omarchy's updater; an up-to-date one
 # doesn't call it.
+check "self-update skips a dev checkout" '"$tool" self-update'
+fake_bin="$work/bin"
+mkdir -p "$fake_bin"
 xdg="$work/xdg"
 git clone -q --bare "$repo" "$work/origin.git"
 git clone -q "$work/origin.git" "$xdg/omarchy/plugins/omarchy-tool"

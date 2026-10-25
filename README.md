@@ -27,28 +27,32 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 
 - **Desactivar una función** borra todo lo que esa función escribió en el
   sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
-- **Eliminar el plugin** deja el sistema como estaba: devuelve la app Windows a
-  Omarchy y borra el lanzador, la configuración y la entrada del menú. Como
-  `omarchy plugin remove` no ejecuta código del plugin, la limpieza la hace una
-  copia de `bin/uninstall.sh` guardada fuera del plugin: la lanza el panel al
-  descargarse y, si no llegó a hacerlo, el lanzador de Windows la próxima vez.
+- **Eliminar el plugin** deja el sistema como estaba: quita los discos de la
+  configuración de Windows (pide tu contraseña) y borra la configuración del
+  plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
+  del plugin, la limpieza la hace una copia de `bin/uninstall.sh` guardada fuera
+  del plugin, que el panel lanza al descargarse.
 - `omarchy-tool uninstall` hace esa misma limpieza a mano.
 
 ## Módulos
 
-### Windows · discos
+### Windows
 
-Con el interruptor activado, la VM de Windows de Omarchy (la app **Windows**)
-se abre con los discos que marques como unidades dentro de Windows (en *Este
-equipo*). Puedes marcar los discos montados en `/mnt`, `/media` o `/run/media`
-o añadir cualquier carpeta por su ruta. Un disco desconectado se omite.
+Comparte hasta 2 discos con la VM de Windows de Omarchy igual que Omarchy
+comparte `~/Windows`: como carpetas de red en `\\host.lan` (`Data2` y `Data3`,
+junto a la `Data` de Omarchy). En Windows les puedes poner letra con *Conectar
+unidad de red*. Marca los discos montados en `/mnt`, `/media` o `/run/media`, o
+añade una carpeta por su ruta (también vale `/home`).
 
-Cómo funciona: `omarchy-windows-vm launch` sigue arrancando y conectando la VM.
-El plugin solo antepone a su `PATH` un `xfreerdp3` que añade un `/drive:` por
-cada disco. Mientras está activado, la entrada `windows-vm.desktop` apunta a un
-lanzador en `~/.local/share/omarchy-tool/`. Si quitas el plugin, ese lanzador
-vuelve al comando de Omarchy, así que la app Windows nunca se rompe. Al
-desactivarlo, la entrada vuelve a quedar como estaba.
+Cómo funciona: la imagen `dockurr/windows` que usa Omarchy sirve `/shared2` y
+`/shared3` si existen. El plugin añade esas dos líneas a la configuración de la
+VM (`/var/lib/omarchy/windows/docker-compose.yml`, de root) con
+`bin/compose-shares.sh` vía `pkexec`, así que cada cambio pide tu contraseña y
+se ve al volver a abrir Windows. Ese script solo toca esas dos líneas y valida
+las rutas. Si reinstalas Windows desde Omarchy, el plugin vuelve a ponerlas.
+
+Al ser carpetas de red, algunos instaladores muy estrictos pueden negarse a
+instalar en ellas.
 
 ## Línea de comandos
 
@@ -61,7 +65,6 @@ omarchy-tool self-update                     # actualiza ya si hay versión nuev
 omarchy-tool windows-disks enable|disable
 omarchy-tool windows-disks add /mnt/datos [Nombre]
 omarchy-tool windows-disks remove /mnt/datos
-omarchy-tool windows-disks launch [--keep-alive]
 ```
 
 ## Añadir un módulo
