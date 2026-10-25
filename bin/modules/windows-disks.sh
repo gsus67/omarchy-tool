@@ -10,7 +10,7 @@
 # VM starts.
 #
 # Drive letters: Windows only maps \\host.lan\Data to Z: once, at install. For
-# ours the module drops "Omarchy Tool" into that same Shared folder (~/Windows)
+# ours the module drops "Omarchy Tool/Discos" into that same Shared folder (~/Windows)
 # with "Activar discos" (the same `net use ... /persistent:yes` plus a desktop
 # shortcut) and "Quitar discos", which the user runs once inside Windows.
 
@@ -89,11 +89,19 @@ windows_disks_free_letter() {
   return 1
 }
 
-# Keep ~/Windows/Omarchy Tool in step: the scripts plus discos.txt while disks
+# Keep ~/Windows/Omarchy Tool/Discos in step: the scripts plus discos.txt while disks
 # are shared. Otherwise only what Windows needs to undo letters it was given
 # (.letras-puestas, written by Activar), or nothing at all.
 windows_disks_sync_windows_folder() {
-  local folder="$WINDOWS_DISKS_SHARED/Omarchy Tool" index=2 letter name path
+  local root="$WINDOWS_DISKS_SHARED/Omarchy Tool" index=2 letter name path f
+  local folder="$root/Discos"
+  # v0.0.9-v0.0.18 kept these right in Omarchy Tool; move them, marker included.
+  for f in omarchy-tool.ps1 "Activar discos.cmd" "Quitar discos.cmd" discos.txt .plugin-activo .letras-puestas; do
+    if [[ -e $root/$f ]]; then
+      mkdir -p -- "$folder"
+      mv -f -- "$root/$f" "$folder/$f"
+    fi
+  done
   if [[ $(windows_disks_desired) != "" && -f $COMPOSE_FILE && -d $WINDOWS_DISKS_SHARED ]]; then
     mkdir -p -- "$folder"
     cp -f -- "$TOOL_DIR/windows/omarchy-tool.ps1" "$TOOL_DIR/windows/Activar discos.cmd" \
@@ -109,10 +117,15 @@ windows_disks_sync_windows_folder() {
   fi
 }
 
+# The folder is shared with other modules: drop only our files, and the folder
+# once nothing is left in it.
 windows_disks_retire_windows_folder() {
   local folder=$1
   rm -f -- "$folder/.plugin-activo" "$folder/Activar discos.cmd" "$folder/discos.txt"
-  [[ -e $folder/.letras-puestas ]] || rm -rf -- "$folder"
+  if [[ ! -e $folder/.letras-puestas ]]; then
+    rm -f -- "$folder/omarchy-tool.ps1" "$folder/Quitar discos.cmd"
+  fi
+  rmdir -- "$folder" "${folder%/*}" 2>/dev/null || true
 }
 
 # v0.0.1-v0.0.6 shared disks over RDP through a launcher in windows-vm.desktop.
@@ -168,7 +181,7 @@ windows_disks_status() {
   candidates=$(windows_disks_candidates_json)
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson disks "$disks" --argjson candidates "$candidates" --argjson max "$WINDOWS_DISKS_MAX" \
-    --argjson lettersSet "$([[ -e "$WINDOWS_DISKS_SHARED/Omarchy Tool/.letras-puestas" ]] && echo true || echo false)" \
+    --argjson lettersSet "$([[ -e "$WINDOWS_DISKS_SHARED/Omarchy Tool/Discos/.letras-puestas" ]] && echo true || echo false)" \
     '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, disks: $disks, lettersSet: $lettersSet,
       summary: (if ($installed | not) then "Windows no está instalado"
         elif $enabled then "Comparte " + ($disks | length | tostring) + (if ($disks | length) == 1 then " disco" else " discos" end)

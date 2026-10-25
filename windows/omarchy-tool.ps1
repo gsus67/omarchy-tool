@@ -56,8 +56,17 @@ if ($Accion -eq 'activar') {
 } else {
   Write-Host 'Letras y accesos de Omarchy Tool quitados.'
   if (-not $active) {
-    # The plugin is off or gone: leave nothing of it behind, here or in Windows.
+    # The disks are off or the plugin is gone: leave nothing of this behind,
+    # here or in Windows. Other features' files in this folder stay.
     Set-Location -LiteralPath $env:TEMP
-    Remove-Item -LiteralPath $here -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($f in 'omarchy-tool.ps1', 'Quitar discos.cmd', 'Activar discos.cmd', 'discos.txt') {
+      Remove-Item -LiteralPath (Join-Path $here $f) -Force -ErrorAction SilentlyContinue
+    }
+    # Then this Discos folder, and Omarchy Tool above it, if nothing else is left.
+    foreach ($dir in $here, (Split-Path -Parent $here)) {
+      if (-not (Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+      }
+    }
   }
 }

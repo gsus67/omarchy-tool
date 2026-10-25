@@ -129,6 +129,27 @@ Panel {
     onTriggered: if (!updateProc.running) updateProc.running = true
   }
 
+  // "Devolver periféricos a Linux", run inside Windows, leaves a request file
+  // in Shared › Omarchy Tool. Check for it every few seconds while the
+  // feature is on; one bar instance is enough to act (the tool serializes).
+  readonly property string usbRequestFile: moduleStatus("usb-windows").requestFile || ""
+  readonly property bool usbWatch: moduleStatus("usb-windows").enabled === true && usbRequestFile !== ""
+
+  Process {
+    id: requestProbe
+    command: ["test", "-e", root.usbRequestFile]
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.run(["usb-windows", "check-request"])
+    }
+  }
+
+  Timer {
+    interval: 2000
+    repeat: true
+    running: root.usbWatch
+    onTriggered: if (!requestProbe.running) requestProbe.running = true
+  }
+
   Process {
     id: statusProc
     command: [root.toolPath, "status"]

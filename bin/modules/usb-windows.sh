@@ -16,6 +16,9 @@
 USB_WINDOWS_SYS="${OMARCHY_TOOL_USB_SYS:-/sys/bus/usb/devices}"
 USB_WINDOWS_MAX=4
 USB_WINDOWS_IDS="${OMARCHY_TOOL_USB_IDS:-/usr/share/hwdata/usb.ids}"
+USB_WINDOWS_SHARED="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}"
+USB_WINDOWS_FOLDER="$USB_WINDOWS_SHARED/Omarchy Tool/Periféricos"
+USB_WINDOWS_RETURN_CMD="Devolver periféricos a Linux.cmd"
 
 usb_windows_enabled() {
   [[ $(config_get '.modules["usb-windows"].enabled // false') == true ]]
@@ -65,6 +68,31 @@ usb_windows_apply() {
   install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
   hotkeys_sync
   compose_sync || fail "no se pudo cambiar la configuración de Windows"
+  usb_windows_sync_windows_folder
+}
+
+# "Devolver periféricos a Linux" in Shared › Omarchy Tool › Periféricos: run inside Windows,
+# it leaves .devolver-usb there, and the panel (polling check-request) gives
+# everything back, for when SUPER+ALT+U is forgotten. The folder is shared
+# with other modules: only our files come and go.
+usb_windows_sync_windows_folder() {
+  local folder=$USB_WINDOWS_FOLDER
+  if [[ -n $(usb_windows_desired) && -f $COMPOSE_FILE && -d $USB_WINDOWS_SHARED ]]; then
+    mkdir -p -- "$folder"
+    cp -f -- "$TOOL_DIR/windows/$USB_WINDOWS_RETURN_CMD" "$folder/"
+  elif [[ -d $folder ]]; then
+    rm -f -- "$folder/$USB_WINDOWS_RETURN_CMD" "$folder/.devolver-usb"
+    rmdir -- "$folder" "${folder%/*}" 2>/dev/null || true
+  fi
+}
+
+# check-request: give everything back if Windows asked for it.
+usb_windows_check_request() {
+  local request="$USB_WINDOWS_FOLDER/.devolver-usb"
+  [[ -e $request ]] || return 0
+  rm -f -- "$request"
+  usb_windows_enabled || return 0
+  usb_windows_move linux --all
 }
 
 # SUPER+ALT+U gives everything in Windows back to Linux, with no mouse needed.
@@ -152,6 +180,11 @@ usb_windows_move() {
     if [[ $where == windows ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
   done
   [[ $arg == --all ]] && usb_windows_notify "Periféricos devueltos a Linux" "${#ids[@]} dispositivo(s) de vuelta."
+  # Say how to get it back right when it is gone: the mouse may be the one.
+  if [[ $where == windows ]]; then
+    usb_windows_notify -t 15000 "Ahora está en Windows" \
+      "Para devolverlo a Linux: SUPER + ALT + U, o en Windows abre Shared › Omarchy Tool › Periféricos › Devolver periféricos a Linux."
+  fi
   return 0
 }
 
@@ -174,7 +207,9 @@ usb_windows_status() {
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson connected "$connected" --argjson devices "$devices" --argjson max "$USB_WINDOWS_MAX" \
     --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" --argjson ready "$ready" \
+    --arg request "$USB_WINDOWS_FOLDER/.devolver-usb" \
     '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running, liveReady: $ready,
+      requestFile: $request,
       devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id), inWindows: any($inwin[]; . == $d.id)}],
       candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id)}],
       summary: (if ($installed | not) then "Windows no está instalado"

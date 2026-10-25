@@ -192,7 +192,7 @@ Column {
     visible: root.active && (root.status.disks || []).length > 0
     text: root.status.lettersSet
       ? "Si cambias letras o discos, vuelve a abrir \"Activar discos\" en Windows."
-      : "Para que salgan con su letra, abre una vez en Windows: escritorio › Shared › Omarchy Tool › Activar discos."
+      : "Para que salgan con su letra, abre una vez en Windows: escritorio › Shared › Omarchy Tool › Discos › Activar discos."
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family
     font.pixelSize: Style.font.bodySmall

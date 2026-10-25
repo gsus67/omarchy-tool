@@ -51,7 +51,9 @@ fake_hid hidraw5 0003:00001B1C:00002B0D "Corsair CORSAIR VANGUARD 96 Keyboard"
 fake_hid hidraw6 0003:00001B1C:00002B0D "Corsair CORSAIR VANGUARD 96 Keyboard"
 fake_hid hidraw2 0003:0000093A:0000822A "GLORIOUS Model O 2 Wireless"
 fake_hid hidraw9 0005:0000046D:0000B023 "Bluetooth thing"
-winfolder="$OMARCHY_TOOL_WINDOWS_SHARED/Omarchy Tool"
+winroot="$OMARCHY_TOOL_WINDOWS_SHARED/Omarchy Tool"
+winfolder="$winroot/Discos"
+usbfolder="$winroot/Periféricos"
 mkdir -p "$OMARCHY_TOOL_WINDOWS_SHARED"
 mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/disk-c"
 
@@ -190,6 +192,15 @@ check "writer refuses symlinked paths" 'ln -s /etc "$work/link" && ! bash "$repo
 check "add refuses symlinked paths" '! "$tool" windows-disks add "$work/link/ssl" X 2>/dev/null'
 check "writer left compose alone" 'cmp -s "$compose" "$work/compose-original"'
 
+# v0.0.9-v0.0.18 kept the disk scripts right in Omarchy Tool: they move to Discos.
+"$tool" windows-disks enable
+mkdir -p "$winroot"; mv "$winfolder"/* "$winfolder"/.plugin-activo "$winroot/"; touch "$winroot/.letras-puestas"; rmdir "$winfolder"
+"$tool" apply
+check "old disk files move into Discos" '[[ -f "$winfolder/Activar discos.cmd" && -e $winfolder/.letras-puestas && ! -e "$winroot/Activar discos.cmd" && ! -e $winroot/.letras-puestas ]]'
+rm -f "$winfolder/.letras-puestas"
+"$tool" windows-disks disable
+check "disks off with nothing else leaves no Omarchy Tool folder" '[[ ! -e $winroot ]]'
+
 # Upgrade from the RDP versions: the Windows entry goes back to Omarchy.
 mkdir -p "$OMARCHY_TOOL_STATE_DIR"
 printf '#!/bin/bash\n' >"$OMARCHY_TOOL_STATE_DIR/windows-vm-launch"
@@ -288,6 +299,17 @@ check "after --all nothing is in Windows" '[[ $(OMARCHY_TOOL_VM_PID=777 wu " | [
 "$tool" usb-windows disable
 check "disable removes the shortcut file" '[[ ! -e $keys ]]'
 check "disable leaves hyprland.lua as it was" 'cmp -s "$OMARCHY_TOOL_HYPR_DIR/hyprland.lua" "$work/hyprland-original"'
+check "moving to Windows says how to get it back" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" PATH="$fake_bin2:$PATH" "$tool" usb-windows move windows 093a:822a && grep -q "SUPER + ALT + U" "$work/notify2.log" && OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" "$tool" usb-windows move linux 093a:822a'
+
+# The Windows-side return file, in its own Periféricos folder.
+"$tool" usb-windows enable
+check "Windows gets the return file" '[[ -f "$usbfolder/Devolver periféricos a Linux.cmd" ]] && file "$usbfolder/Devolver periféricos a Linux.cmd" | grep -q CRLF'
+touch "$usbfolder/.devolver-usb"
+check "a request from Windows gives everything back" 'OMARCHY_TOOL_VM_PID=777 OMARCHY_TOOL_PRIV="true" PATH="$fake_bin2:$PATH" "$tool" usb-windows check-request && [[ ! -e $usbfolder/.devolver-usb ]]'
+check "no request: check-request does nothing" '"$tool" usb-windows check-request'
+check "status tells the panel where to look" '[[ $(wu .requestFile) == "$usbfolder/.devolver-usb" ]]'
+"$tool" usb-windows disable
+check "disable removes the Periféricos folder" '[[ ! -e $usbfolder ]]'
 check "fifth usb device is refused" '"$tool" usb-windows add aaaa:0001 && "$tool" usb-windows add aaaa:0002 && ! "$tool" usb-windows add aaaa:0003 2>/dev/null'
 check "editor refuses bad usb ids" '! bash "$repo/bin/compose-edit.sh" --usb "1b1c:2b0d,x" 2>/dev/null && cmp -s "$compose" "$work/compose-original"'
 

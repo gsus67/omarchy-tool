@@ -49,7 +49,7 @@ dos carpetas extra (`Data2` y `Data3`). Para usar otro, desmarca uno primero.
 
 **Letras:** Omarchy pone `Z:` a su carpeta Shared una sola vez, al instalar
 Windows. Para tus discos eliges la letra en el panel (por defecto `X:` e `Y:`)
-y el plugin deja en Shared una carpeta **Omarchy Tool** con **Activar discos**,
+y el plugin deja en Shared › **Omarchy Tool › Discos** el archivo **Activar discos**,
 que hace lo mismo que hizo Omarchy (`net use X: \\host.lan\Data2
 /persistent:yes` y un acceso en el escritorio), y además pone a cada unidad el nombre del disco en *Este equipo* (por ejemplo "Datos (X:)"). Se abre una vez dentro de
 Windows; si cambias letras o discos, se vuelve a abrir. **Quitar discos** lo
@@ -81,7 +81,11 @@ los pases. Al apagarlo, la configuración vuelve a quedar como estaba.
 
 **Sin ratón:** con la función encendida, **SUPER + ALT + U** devuelve a Linux
 todo lo que esté en Windows con una sola contraseña, aunque la ventana de
-Windows tenga el teclado (atajo con `dont_inhibit`). El atajo vive en
+Windows tenga el teclado (atajo con `dont_inhibit`). Si se te olvida el atajo,
+dentro de Windows abre **Shared › Omarchy Tool › Periféricos › Devolver
+periféricos a Linux**: deja una nota en la carpeta compartida y el panel, que
+la vigila cada 2 segundos, hace lo mismo. Al pasar algo a Windows, una
+notificación te recuerda las dos formas. El atajo vive en
 `~/.config/hypr/omarchy-tool.lua`, que `hyprland.lua` carga con una línea
 protegida; al apagar la función o quitar el plugin se borran los dos.
 

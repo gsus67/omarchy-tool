@@ -45,13 +45,17 @@ if [[ -f $webhid_rules && -f $state_dir/udev-webhid.sh ]]; then
   fi
 fi
 
-# ~/Windows/Omarchy Tool: keep only "Quitar discos" while Windows still has
-# letters from "Activar discos" (it deletes the folder once run); else drop it.
-windows_folder="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}/Omarchy Tool"
-if [[ -d $windows_folder ]]; then
+# ~/Windows/Omarchy Tool: keep only Discos › "Quitar discos" while Windows still
+# has letters from "Activar discos" (it deletes itself once run); drop the rest.
+windows_root="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}/Omarchy Tool"
+for windows_folder in "$windows_root/Discos" "$windows_root"; do
+  [[ -d $windows_folder ]] || continue
   rm -f -- "$windows_folder/.plugin-activo" "$windows_folder/Activar discos.cmd" "$windows_folder/discos.txt"
-  [[ -e $windows_folder/.letras-puestas ]] || rm -rf -- "$windows_folder"
-fi
+  [[ -e $windows_folder/.letras-puestas ]] || rm -f -- "$windows_folder/omarchy-tool.ps1" "$windows_folder/Quitar discos.cmd"
+done
+rm -rf -- "$windows_root/Periféricos"
+rm -f -- "$windows_root/Devolver periféricos a Linux.cmd" "$windows_root/.devolver-usb"
+rmdir -- "$windows_root/Discos" "$windows_root" 2>/dev/null || true
 
 # Older versions pointed the Windows app at our own launcher; hand it back.
 if [[ -f $desktop ]] && grep '^Exec=' "$desktop" | grep -qF -- "$state_dir/windows-vm-launch"; then
