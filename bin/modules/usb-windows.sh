@@ -8,6 +8,12 @@
 # through bin/compose-edit.sh under pkexec. While Windows is open, Linux loses
 # those devices; they come back when the VM stops. Changes reach Windows the
 # next time it starts.
+#
+# While Windows runs, `move linux|windows <id>` hands a device back to Linux
+# or over to Windows on the spot (bin/usb-live.sh through the QEMU monitor),
+# so nothing in Windows has to be closed. $STATE_DIR/usb-live.state remembers
+# those moves for the current VM run: its first line is the QEMU pid, then
+# "+id" (moved to Windows) or "-id" (moved back to Linux).
 
 USB_WINDOWS_SYS="${OMARCHY_TOOL_USB_SYS:-/sys/bus/usb/devices}"
 USB_WINDOWS_MAX=4
@@ -44,20 +50,83 @@ usb_windows_compose_args() {
 }
 
 usb_windows_apply() {
+  mkdir -p -- "$STATE_DIR"
+  install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
   compose_sync || fail "no se pudo cambiar la configuración de Windows"
 }
 
+# QEMU of the running Omarchy Windows VM (dockurr/windows), if any.
+usb_windows_vm_pid() {
+  if [[ -n ${OMARCHY_TOOL_VM_PID+x} ]]; then
+    echo "$OMARCHY_TOOL_VM_PID"
+    return
+  fi
+  pgrep -f '^qemu-system-x86_64 .*monitor unix:/run/shm/monitor.sock' | head -n1
+}
+
+usb_windows_vm_started() {
+  local pid=$1
+  if [[ -n ${OMARCHY_TOOL_VM_STARTED+x} ]]; then
+    echo "$OMARCHY_TOOL_VM_STARTED"
+    return
+  fi
+  date -d "$(ps -o lstart= -p "$pid")" +%s 2>/dev/null || echo 0
+}
+
+usb_windows_live_state() {
+  echo "$STATE_DIR/usb-live.state"
+}
+
+# Whether <id> is in Windows right now: taken at boot (in the compose that
+# was in place when this VM run started) unless moved since.
+usb_windows_in_windows() {
+  local id=$1 pid=$2 state last
+  state=$(usb_windows_live_state)
+  if [[ -f $state && $(head -n1 "$state") == "$pid" ]]; then
+    last=$(tail -n +2 "$state" | grep -x -- "[+-]$id" | tail -n1)
+    [[ $last == "+$id" ]] && return 0
+    [[ $last == "-$id" ]] && return 1
+  fi
+  grep -qx -- "--usb $id" <<<"$(compose_applied)" &&
+    (($(usb_windows_vm_started "$pid") >= $(compose_mtime)))
+}
+
+# move linux|windows <vvvv:pppp>
+usb_windows_move() {
+  local where=${1:-} id=${2:-} pid state action
+  id=${id,,}
+  [[ $where == linux || $where == windows ]] && usb_windows_valid_id "$id" ||
+    fail "usage: omarchy-tool usb-windows move linux|windows <vvvv:pppp>"
+  pid=$(usb_windows_vm_pid)
+  [[ -n $pid ]] || fail "Windows no está abierto"
+  action=attach
+  [[ $where == linux ]] && action=detach
+  mkdir -p -- "$STATE_DIR"
+  install -m 0644 -- "$TOOL_DIR/bin/usb-live.sh" "$STATE_DIR/usb-live.sh"
+  privileged /usr/bin/bash "$STATE_DIR/usb-live.sh" "$action" "$id" || fail "no se pudo mover el dispositivo"
+  state=$(usb_windows_live_state)
+  [[ -f $state && $(head -n1 "$state") == "$pid" ]] || echo "$pid" >"$state"
+  if [[ $where == windows ]]; then echo "+$id" >>"$state"; else echo "-$id" >>"$state"; fi
+}
+
 usb_windows_status() {
-  local enabled=false installed=false applied=false connected devices
+  local enabled=false installed=false applied=false connected devices pid inwin='[]' id
   usb_windows_enabled && enabled=true
+  pid=$(usb_windows_vm_pid)
+  if [[ -n $pid ]]; then
+    while IFS= read -r id; do
+      [[ -n $id ]] && usb_windows_in_windows "$id" "$pid" && inwin=$(jq -c --arg id "$id" '. + [$id]' <<<"$inwin")
+    done < <(config_get -r '.modules["usb-windows"].devices // [] | .[] | .id')
+  fi
   [[ -f $COMPOSE_FILE ]] && installed=true
   compose_in_sync --usb && applied=true
   connected=$(usb_windows_connected_json)
   devices=$(config_get -c '.modules["usb-windows"].devices // []')
   jq -n --argjson enabled "$enabled" --argjson installed "$installed" --argjson applied "$applied" \
     --argjson connected "$connected" --argjson devices "$devices" --argjson max "$USB_WINDOWS_MAX" \
-    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max,
-      devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id)}],
+    --argjson running "$([[ -n $pid ]] && echo true || echo false)" --argjson inwin "$inwin" \
+    '{enabled: $enabled, vmInstalled: $installed, applied: $applied, max: $max, vmRunning: $running,
+      devices: [$devices[] | . as $d | . + {connected: any($connected[]; .id == $d.id), inWindows: any($inwin[]; . == $d.id)}],
       candidates: [$connected[] | . as $c | . + {selected: any($devices[]; .id == $c.id)}],
       summary: (if ($installed | not) then "Windows no está instalado"
         elif $enabled then ($devices | length | tostring) + " en Windows" else "Desactivado" end)}'

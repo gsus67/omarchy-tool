@@ -96,6 +96,12 @@ escribe el mismo `bin/compose-edit.sh` que los discos, en una sola llamada con
 `pkexec`, y se ve al volver a abrir Windows. Al apagarlo, la configuración
 vuelve a quedar como estaba.
 
+Con Windows abierto, la página muestra **Devolver a Linux** / **Pasar a
+Windows** para cada dispositivo: lo cambia al momento, sin cerrar Windows (cerrar
+la ventana apaga la VM y pierdes lo que tengas abierto). Usa el monitor de QEMU
+de la VM (`bin/usb-live.sh`, con `pkexec`). Si no tienes otro ratón, abre el
+panel desde el menú de Omarchy y muévete con el teclado.
+
 ## Línea de comandos
 
 El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
@@ -114,6 +120,7 @@ omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
+omarchy-tool usb-windows move linux|windows 093a:822a  # con Windows abierto
 ```
 
 ## Añadir un módulo

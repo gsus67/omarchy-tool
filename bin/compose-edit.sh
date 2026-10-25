@@ -78,7 +78,8 @@ share_rows=${share_rows%$'\n'}
 
 usb_args=''
 for id in "${usbs[@]+"${usbs[@]}"}"; do
-  usb_args+=" -device usb-host,vendorid=0x${id%:*},productid=0x${id#*:}"
+  # The id lets usb-live.sh hand the device back while Windows runs.
+  usb_args+=" -device usb-host,id=omt${id%:*}${id#*:},vendorid=0x${id%:*},productid=0x${id#*:}"
 done
 
 tmp=$(mktemp "$compose.XXXXXX")
@@ -88,7 +89,7 @@ awk -v shares="$share_rows" -v usb_args="$usb_args" '
   /^[[:space:]]*-[[:space:]]*"?[^[:space:]].*:\/shared[23]"?[[:space:]]*$/ { next }
   /^[[:space:]]*-[[:space:]]*\/dev\/bus\/usb[[:space:]]+# omarchy-tool[[:space:]]*$/ { next }
   /^[[:space:]]*ARGUMENTS:[[:space:]]*".*"[[:space:]]*$/ {
-    gsub(/ -device usb-host,vendorid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f],productid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f]/, "")
+    gsub(/ -device usb-host,(id=omt[0-9a-f]+,)?vendorid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f],productid=0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f]/, "")
     if (usb_args != "") sub(/"[[:space:]]*$/, usb_args "\"")
     print
     next

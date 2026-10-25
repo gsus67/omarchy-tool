@@ -96,4 +96,48 @@ Column {
       onClicked: root.run(["usb-windows", modelData.selected ? "remove" : "add", modelData.id])
     }
   }
+
+  // While Windows runs: hand each device back and forth without closing it.
+  Text {
+    textFormat: Text.PlainText
+    visible: root.status.vmRunning === true && (root.status.devices || []).length > 0
+    text: "Windows está abierto"
+    color: Qt.darker(root.fg, 1.4)
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.bold: true
+    topPadding: Style.space(4)
+  }
+
+  Repeater {
+    model: root.status.vmRunning === true ? (root.status.devices || []) : []
+
+    Item {
+      required property var modelData
+      width: root.width
+      implicitHeight: moveButton.implicitHeight
+
+      Text {
+        textFormat: Text.PlainText
+        text: modelData.name + (modelData.inWindows ? "  ·  en Windows" : "  ·  en Linux")
+        color: root.fg
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+        anchors.left: parent.left
+        anchors.right: moveButton.left
+        anchors.rightMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Button {
+        id: moveButton
+        text: modelData.inWindows ? "Devolver a Linux" : "Pasar a Windows"
+        bordered: true
+        foreground: root.fg
+        anchors.right: parent.right
+        onClicked: root.run(["usb-windows", "move", modelData.inWindows ? "linux" : "windows", modelData.id])
+      }
+    }
+  }
 }
