@@ -10,6 +10,7 @@
 # Usage:
 #   omarchy-tool status                 JSON state of every module
 #   omarchy-tool apply                  Re-apply every module's config
+#   omarchy-tool uninstall              Remove every trace outside the plugin
 #   omarchy-tool modules                List module names
 #   omarchy-tool <module> <action> ...  Run a module action
 
@@ -20,6 +21,7 @@ TOOL_VERSION=$(jq -r '.version // "0.0.0"' "$TOOL_DIR/manifest.json" 2>/dev/null
 CONFIG_DIR="${OMARCHY_TOOL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-tool}"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 STATE_DIR="${OMARCHY_TOOL_STATE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tool}"
+MENU_FILE="${OMARCHY_TOOL_MENU_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/extensions/omarchy-menu.jsonc}"
 export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
 
 fail() {
@@ -90,11 +92,38 @@ cmd_status() {
     module_json=$("$fn") || module_json='{"error":"status failed"}'
     json=$(jq --arg name "$name" --argjson value "$module_json" '.[$name] = $value' <<<"$json")
   done
-  jq -n --arg version "$TOOL_VERSION" --argjson modules "$json" '{version: $version, modules: $modules}'
+  jq -n --arg version "$TOOL_VERSION" --arg uninstaller "$STATE_DIR/uninstall.sh" --argjson modules "$json" \
+    '{version: $version, uninstaller: $uninstaller, modules: $modules}'
+}
+
+# Keep a copy of the uninstaller outside the plugin folder: once `omarchy
+# plugin remove` deletes the folder, this copy is what cleans up.
+install_uninstaller() {
+  mkdir -p -- "$STATE_DIR"
+  install -m 0755 -- "$TOOL_DIR/bin/uninstall.sh" "$STATE_DIR/uninstall.sh"
+}
+
+# One row in the Omarchy menu that toggles the panel. Only an existing user
+# menu file is touched; uninstall.sh deletes the row by the same id.
+menu_entry_apply() {
+  [[ -f $MENU_FILE ]] || return 0
+  grep -q '^  "omarchy-tool": {' "$MENU_FILE" && return 0
+  local tmp
+  tmp=$(mktemp "$MENU_FILE.XXXXXX")
+  awk -v row='  "omarchy-tool": {"icon":"󰦬","label":"Omarchy Tool","action":"omarchy-shell omarchy-tool toggle"},' '
+    { lines[NR] = $0 }
+    END {
+      last = 0
+      for (i = NR; i > 0; i--) if (lines[i] ~ /^}[[:space:]]*$/) { last = i; break }
+      for (i = 1; i <= NR; i++) { if (i == last) print row; print lines[i] }
+    }
+  ' "$MENU_FILE" >"$tmp" && mv -f -- "$tmp" "$MENU_FILE"
 }
 
 cmd_apply() {
   local name fn status=0
+  install_uninstaller
+  menu_entry_apply
   for name in $(module_names); do
     fn=$(module_fn "$name" apply)
     has_fn "$fn" || continue
@@ -110,10 +139,11 @@ main() {
   case $command in
     status) cmd_status ;;
     apply) cmd_apply ;;
+    uninstall) bash "$TOOL_DIR/bin/uninstall.sh" ;;
     modules) module_names ;;
     version | --version) echo "$TOOL_VERSION" ;;
     "" | help | -h | --help)
-      sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       ;;
     *)
       local action=${1:-} fn

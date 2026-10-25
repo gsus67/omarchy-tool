@@ -15,6 +15,7 @@ trap 'rm -rf -- "$work"' EXIT
 export OMARCHY_TOOL_CONFIG_DIR="$work/config"
 export OMARCHY_TOOL_STATE_DIR="$work/my state"
 export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
+export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 mkdir -p "$OMARCHY_TOOL_APPLICATIONS_DIR" "$work/disk-a" "$work/disk b" "$work/back\\slash"
 
 desktop="$OMARCHY_TOOL_APPLICATIONS_DIR/windows-vm.desktop"
@@ -25,6 +26,14 @@ Exec=uwsm app -- omarchy-windows-vm launch
 Icon=windows
 Type=Application
 EOF
+
+cat >"$OMARCHY_TOOL_MENU_FILE" <<'EOF'
+{
+  // user comment
+  "personal": {"icon":"x","label":"Personal"},
+}
+EOF
+cp "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"
 
 failures=0
 pass() { echo "ok   - $1"; }
@@ -70,6 +79,8 @@ check "apply re-takes a rewritten entry" 'grep -qxF "Exec=uwsm app -- \"$launche
 
 "$tool" windows-disks disable
 check "disable restores stock entry" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
+check "disable removes the launcher" '[[ ! -e $launcher && ! -e $OMARCHY_TOOL_STATE_DIR/windows-vm.exec ]]'
+check "disable keeps disk choices" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") -gt 0 ]]'
 check "other desktop lines kept" 'grep -qx "Icon=windows" "$desktop" && grep -qx "Name=Windows" "$desktop"'
 
 # An unquoted launcher from a v0.0.1 test build still counts as ours.
@@ -85,21 +96,36 @@ check "backslash path round-trips" '"$tool" status | jq -e --arg p "$work/back\\
 "$tool" windows-disks remove "$work/disk-a"
 check "remove drops a disk" '[[ $("$tool" status | jq ".modules[\"windows-disks\"].disks | length") == 1 ]]'
 
-# Launcher falls back to the stock command once the plugin is gone.
-fake_bin="$work/bin"
-mkdir -p "$fake_bin"
-printf '#!/bin/bash\necho "stock $*"\n' >"$fake_bin/omarchy-windows-vm"
-chmod +x "$fake_bin/omarchy-windows-vm"
-sed "s|^tool=.*|tool=$work/missing/omarchy-tool|" "$launcher" >"$work/launcher-orphan"
-check "orphaned launcher falls back to stock" '[[ $(PATH="$fake_bin:$PATH" bash "$work/launcher-orphan" --keep-alive) == "stock launch --keep-alive" ]]'
-
 # The shim forwards Omarchy's args and appends the drives.
 "$tool" windows-disks enable
+fake_bin="$work/bin"
+mkdir -p "$fake_bin"
 printf '#!/bin/bash\nprintf "%%s\\n" "$@"\n' >"$fake_bin/xfreerdp3"
 chmod +x "$fake_bin/xfreerdp3"
 out=$(PATH="$repo/bin/shims:$fake_bin:$PATH" xfreerdp3 /v:127.0.0.1:3389 /title:"Windows VM")
 check "shim keeps original args" 'grep -qx "/title:Windows VM" <<<"$out"'
 check "shim appends drives" 'grep -qxF "/drive:Disk B,$work/disk b" <<<"$out"'
+
+# apply: menu row and uninstaller copy.
+"$tool" apply
+"$tool" apply
+check "apply adds one menu row" '[[ $(grep -c "^  \"omarchy-tool\": {" "$OMARCHY_TOOL_MENU_FILE") == 1 ]]'
+check "menu row sits before the closing brace" '[[ $(tail -n1 "$OMARCHY_TOOL_MENU_FILE") == "}" ]] && grep -q "\"personal\"" "$OMARCHY_TOOL_MENU_FILE"'
+check "apply installs the uninstaller" '[[ -x $OMARCHY_TOOL_STATE_DIR/uninstall.sh ]]'
+
+# The uninstaller does nothing while the plugin folder exists.
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$repo"
+check "uninstaller is a no-op while plugin exists" '[[ -e $launcher ]] && grep -qF "windows-vm-launch" "$desktop"'
+
+# Plugin removed: the launcher cleans up, then opens Windows the stock way.
+printf '#!/bin/bash\necho "stock $*"\n' >"$fake_bin/omarchy-windows-vm"
+chmod +x "$fake_bin/omarchy-windows-vm"
+sed "s|^tool=.*|tool=$work/missing/omarchy-tool|" "$launcher" >"$work/launcher-orphan"
+check "orphaned launcher opens Windows the stock way" '[[ $(PATH="$fake_bin:$PATH" bash "$work/launcher-orphan" --keep-alive) == "stock launch --keep-alive" ]]'
+check "uninstall restores the Windows entry" 'grep -qx "Exec=uwsm app -- omarchy-windows-vm launch" "$desktop"'
+check "uninstall keeps other desktop lines" 'grep -qx "Icon=windows" "$desktop"'
+check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
+check "uninstall leaves the menu as it was" 'cmp -s "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"'
 
 check "unknown module fails" '! "$tool" nope status 2>/dev/null'
 check "unknown action fails" '! "$tool" windows-disks nope 2>/dev/null'

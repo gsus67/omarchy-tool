@@ -84,9 +84,22 @@ Panel {
     else back()
   }
 
+  readonly property string pluginDir: toolPath.replace(/\/bin\/omarchy-tool$/, "")
+
   // Re-sync side effects at shell start: Omarchy may have rewritten the
   // Windows entry (reinstall) while the shell was down.
   Component.onCompleted: run(["apply"])
+
+  // `omarchy plugin remove` deletes our folder and then unloads us, without
+  // running any plugin code. Hand off to the uninstaller copy outside the
+  // folder; it does nothing unless the folder is really gone, so a shell
+  // restart or a hot reload leaves everything as is.
+  Component.onDestruction: {
+    var uninstaller = status && status.uninstaller ? String(status.uninstaller) : ""
+    if (uninstaller === "") return
+    Quickshell.execDetached(["bash", "-c", 'sleep 3; [ -f "$1" ] && exec bash "$1" "$2"',
+      "omarchy-tool-cleanup", uninstaller, pluginDir])
+  }
 
   Process {
     id: statusProc

@@ -16,6 +16,20 @@ omarchy plugin remove omarchy-tool
 Tu configuración se guarda en `~/.config/omarchy-tool/config.json`, fuera del
 plugin, así que las actualizaciones no la borran.
 
+El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
+`~/.config/omarchy/extensions/omarchy-menu.jsonc`).
+
+## Sin suciedad
+
+- **Desactivar una función** borra todo lo que esa función escribió en el
+  sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
+- **Eliminar el plugin** deja el sistema como estaba: devuelve la app Windows a
+  Omarchy y borra el lanzador, la configuración y la entrada del menú. Como
+  `omarchy plugin remove` no ejecuta código del plugin, la limpieza la hace una
+  copia de `bin/uninstall.sh` guardada fuera del plugin: la lanza el panel al
+  descargarse y, si no llegó a hacerlo, el lanzador de Windows la próxima vez.
+- `omarchy-tool uninstall` hace esa misma limpieza a mano.
+
 ## Módulos
 
 ### Windows · discos
@@ -38,6 +52,7 @@ El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
 
 ```bash
 omarchy-tool status                          # estado de todos los módulos (JSON)
+omarchy-tool uninstall                       # borra todo rastro fuera del plugin
 omarchy-tool windows-disks enable|disable
 omarchy-tool windows-disks add /mnt/datos [Nombre]
 omarchy-tool windows-disks remove /mnt/datos
@@ -46,10 +61,15 @@ omarchy-tool windows-disks launch [--keep-alive]
 
 ## Añadir un módulo
 
-1. `bin/modules/<nombre>.sh` con funciones `<nombre>_<acción>`, y de forma
-   opcional `<nombre>_status` (JSON para el panel) y `<nombre>_apply`.
-2. `modules/<Nombre>.qml`, que recibe `status` y llama a `tool.run([...])`.
-3. Añádelo a la lista `modules` de `ToolPanel.qml`.
+1. `bin/modules/<nombre>.sh` con funciones `<nombre>_<acción>`. Debe tener
+   `<nombre>_enable`, `<nombre>_disable`, `<nombre>_status` (JSON con
+   `enabled`) y `<nombre>_apply`. Al desactivarse, `apply` debe borrar todo lo
+   que el módulo escribió; si toca algo fuera de su carpeta, añade su limpieza
+   a `bin/uninstall.sh`.
+2. `modules/<Nombre>.qml`: la página del módulo. Recibe `status` y llama a
+   `tool.run([...])`.
+3. Añádelo a la lista `modules` de `ToolPanel.qml`. En la lista del panel sale
+   con su nombre y su interruptor.
 
 ## Pruebas
 

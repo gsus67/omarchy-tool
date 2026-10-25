@@ -102,12 +102,14 @@ windows_disks_write_launcher() {
   cat >"$tmp" <<EOF
 #!/bin/bash
 # Written by the omarchy-tool Omarchy plugin (omarchy-tool windows-disks).
-# Opens Windows with your configured disks, or the stock way if the plugin
-# is gone.
+# Opens Windows with your configured disks. If the plugin is gone, cleans up
+# after it and opens Windows the stock way.
 tool=$(printf '%q' "$TOOL_DIR/bin/omarchy-tool")
+uninstaller=$(printf '%q' "$STATE_DIR/uninstall.sh")
 if [[ -x \$tool ]]; then
   exec "\$tool" windows-disks launch "\$@"
 fi
+[[ -f \$uninstaller ]] && bash "\$uninstaller"
 exec omarchy-windows-vm launch "\$@"
 EOF
   chmod 0755 -- "$tmp"
@@ -117,7 +119,10 @@ EOF
 windows_disks_apply() {
   local wanted current ours=false saved="$STATE_DIR/windows-vm.exec"
   wanted=$(windows_disks_launcher_exec)
-  [[ -f $WINDOWS_DISKS_DESKTOP ]] || return 0
+  if [[ ! -f $WINDOWS_DISKS_DESKTOP ]]; then
+    windows_disks_enabled || rm -f -- "$saved" "$(windows_disks_launcher)"
+    return 0
+  fi
   current=$(windows_disks_desktop_exec || true)
   # v0.0.1 test builds wrote the launcher path unquoted; treat it as ours.
   [[ $current == "$wanted" || $current == "uwsm app -- $(windows_disks_launcher)" ]] && ours=true
@@ -131,11 +136,15 @@ windows_disks_apply() {
       fi
       windows_disks_set_desktop_exec "$wanted"
     fi
-  elif [[ $ours == true ]]; then
-    local restore=$WINDOWS_DISKS_STOCK_EXEC
-    [[ -s $saved ]] && restore=$(head -n1 "$saved")
-    windows_disks_set_desktop_exec "$restore"
-    rm -f -- "$saved"
+  else
+    if [[ $ours == true ]]; then
+      local restore=$WINDOWS_DISKS_STOCK_EXEC
+      [[ -s $saved ]] && restore=$(head -n1 "$saved")
+      windows_disks_set_desktop_exec "$restore"
+    fi
+    # Off leaves nothing of this module on the system; only the disk choices
+    # in the config survive, so switching back on remembers them.
+    rm -f -- "$saved" "$(windows_disks_launcher)"
   fi
 }
 
