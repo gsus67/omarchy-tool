@@ -85,7 +85,7 @@ la ventana apaga la VM y pierdes lo que tengas abierto). Usa el monitor de QEMU
 de la VM (`bin/usb-live.sh`, con `pkexec`). Si no tienes otro ratón, abre el
 panel desde el menú de Omarchy y muévete con el teclado.
 
-### Periféricos en el navegador
+### Periféricos en navegador
 
 Deja que el navegador hable con los dispositivos USB que marques (WebHID), para
 configuradores web como **CORSAIR Web Hub**. Sin esto, Chromium ve el

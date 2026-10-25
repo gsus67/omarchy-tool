@@ -24,7 +24,7 @@ Panel {
   readonly property var modules: [
     { id: "windows-disks", group: "Windows", title: "Discos en Windows", source: "modules/WindowsDisks.qml" },
     { id: "usb-windows", group: "Windows", title: "Periféricos en Windows", source: "modules/UsbWindows.qml" },
-    { id: "web-devices", group: "Navegador", title: "Periféricos en el navegador", source: "modules/WebDevices.qml" }
+    { id: "web-devices", group: "Navegador", title: "Periféricos en navegador", source: "modules/WebDevices.qml" }
   ]
 
   readonly property string toolPath: decodeURIComponent(String(Qt.resolvedUrl("bin/omarchy-tool")).replace(/^file:\/\//, ""))
