@@ -11,6 +11,7 @@
 #   omarchy-tool status                 JSON state of every module
 #   omarchy-tool apply                  Re-apply every module's config
 #   omarchy-tool uninstall              Remove every trace outside the plugin
+#   omarchy-tool self-update            Update from GitHub if a newer version exists
 #   omarchy-tool modules                List module names
 #   omarchy-tool <module> <action> ...  Run a module action
 
@@ -120,6 +121,31 @@ menu_entry_apply() {
   ' "$MENU_FILE" >"$tmp" && mv -f -- "$tmp" "$MENU_FILE"
 }
 
+# Fast-forward the installed plugin when its git remote has new commits, via
+# Omarchy's own updater. Only an install under Omarchy's plugin folder updates
+# itself; a dev checkout never does. One run at a time across bar instances.
+cmd_self_update() {
+  local plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+  local lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool-update.lock"
+  [[ $TOOL_DIR == "$plugins_dir/omarchy-tool" ]] || return 0
+  [[ -d $TOOL_DIR/.git ]] || return 0
+
+  exec 9>"$lock"
+  flock -n 9 || return 0
+
+  git -C "$TOOL_DIR" fetch -q origin 2>/dev/null || return 0
+  local head upstream
+  head=$(git -C "$TOOL_DIR" rev-parse HEAD) || return 0
+  upstream=$(git -C "$TOOL_DIR" rev-parse '@{upstream}' 2>/dev/null) || return 0
+  [[ $head != "$upstream" ]] || return 0
+  git -C "$TOOL_DIR" merge-base --is-ancestor HEAD '@{upstream}' || return 0
+
+  omarchy-plugin-update omarchy-tool --yes >/dev/null 2>&1 || return 1
+  local version
+  version=$(jq -r '.version // ""' "$TOOL_DIR/manifest.json" 2>/dev/null)
+  omarchy-notification-send -g "󰦬" "Omarchy Tool actualizado" "Ya tienes la versión ${version:-nueva}." >/dev/null 2>&1 || true
+}
+
 cmd_apply() {
   local name fn status=0
   install_uninstaller
@@ -140,10 +166,11 @@ main() {
     status) cmd_status ;;
     apply) cmd_apply ;;
     uninstall) bash "$TOOL_DIR/bin/uninstall.sh" ;;
+    self-update) cmd_self_update ;;
     modules) module_names ;;
     version | --version) echo "$TOOL_VERSION" ;;
     "" | help | -h | --help)
-      sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       ;;
     *)
       local action=${1:-} fn

@@ -13,6 +13,10 @@ omarchy plugin update omarchy-tool
 omarchy plugin remove omarchy-tool
 ```
 
+El plugin se actualiza solo: comprueba GitHub al arrancar y cada 6 horas, y si
+hay versión nueva se actualiza con `omarchy plugin update` y te avisa con una
+notificación.
+
 Tu configuración se guarda en `~/.config/omarchy-tool/config.json`, fuera del
 plugin, así que las actualizaciones no la borran.
 
@@ -53,6 +57,7 @@ El panel solo llama a `bin/omarchy-tool`, que también se puede usar a mano:
 ```bash
 omarchy-tool status                          # estado de todos los módulos (JSON)
 omarchy-tool uninstall                       # borra todo rastro fuera del plugin
+omarchy-tool self-update                     # actualiza ya si hay versión nueva
 omarchy-tool windows-disks enable|disable
 omarchy-tool windows-disks add /mnt/datos [Nombre]
 omarchy-tool windows-disks remove /mnt/datos

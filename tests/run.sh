@@ -127,6 +127,26 @@ check "uninstall keeps other desktop lines" 'grep -qx "Icon=windows" "$desktop"'
 check "uninstall removes state and config" '[[ ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
 check "uninstall leaves the menu as it was" 'cmp -s "$OMARCHY_TOOL_MENU_FILE" "$work/menu-original"'
 
+check "self-update skips a dev checkout" '"$tool" self-update'
+# self-update from an install under Omarchy's plugin folder: a newer commit
+# on the remote gets pulled through Omarchy's updater; an up-to-date one
+# doesn't call it.
+xdg="$work/xdg"
+git clone -q --bare "$repo" "$work/origin.git"
+git clone -q "$work/origin.git" "$xdg/omarchy/plugins/omarchy-tool"
+git clone -q "$work/origin.git" "$work/upstream"
+printf '#!/bin/bash\necho called >>"%s/updater.log"\ngit -C "%s" merge -q --ff-only "@{upstream}"\n' "$work" "$xdg/omarchy/plugins/omarchy-tool" >"$fake_bin/omarchy-plugin-update"
+printf '#!/bin/bash\necho "$@" >>"%s/notify.log"\n' "$work" >"$fake_bin/omarchy-notification-send"
+chmod +x "$fake_bin/omarchy-plugin-update" "$fake_bin/omarchy-notification-send"
+installed="$xdg/omarchy/plugins/omarchy-tool/bin/omarchy-tool"
+XDG_CONFIG_HOME="$xdg" XDG_RUNTIME_DIR="$work" PATH="$fake_bin:$PATH" "$installed" self-update
+check "self-update does nothing when up to date" '[[ ! -e $work/updater.log ]]'
+git -C "$work/upstream" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "newer"
+git -C "$work/upstream" push -q origin HEAD
+XDG_CONFIG_HOME="$xdg" XDG_RUNTIME_DIR="$work" PATH="$fake_bin:$PATH" "$installed" self-update
+check "self-update pulls a newer version" '[[ $(git -C "$xdg/omarchy/plugins/omarchy-tool" log -1 --format=%s) == newer ]]'
+check "self-update notifies" 'grep -q "Omarchy Tool actualizado" "$work/notify.log"'
+
 check "unknown module fails" '! "$tool" nope status 2>/dev/null'
 check "unknown action fails" '! "$tool" windows-disks nope 2>/dev/null'
 

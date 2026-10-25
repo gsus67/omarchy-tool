@@ -101,6 +101,30 @@ Panel {
       "omarchy-tool-cleanup", uninstaller, pluginDir])
   }
 
+  // Auto-update: check GitHub a couple of minutes after the shell starts,
+  // then every six hours. `omarchy-tool self-update` does nothing when there
+  // is no newer version.
+  Process {
+    id: updateProc
+    command: [root.toolPath, "self-update"]
+  }
+
+  Timer {
+    interval: 2 * 60 * 1000
+    running: true
+    onTriggered: {
+      updateProc.running = true
+      updateTimer.running = true
+    }
+  }
+
+  Timer {
+    id: updateTimer
+    interval: 6 * 60 * 60 * 1000
+    repeat: true
+    onTriggered: if (!updateProc.running) updateProc.running = true
+  }
+
   Process {
     id: statusProc
     command: [root.toolPath, "status"]
@@ -203,17 +227,6 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
-              textFormat: Text.PlainText
-              visible: root.current === null
-              text: root.status.version ? "v" + root.status.version : ""
-              color: Qt.darker(root.barForeground, 1.5)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              anchors.left: title.right
-              anchors.leftMargin: Style.space(8)
-              anchors.baseline: title.baseline
-            }
           }
 
           PanelSeparator { foreground: root.barForeground }
