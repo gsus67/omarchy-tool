@@ -135,6 +135,8 @@ failures=0
 pass() { echo "ok   - $1"; }
 bad() { echo "FAIL - $1"; failures=$((failures + 1)); }
 check() { if eval "$2"; then pass "$1"; else bad "$1"; fi; }
+# Wait up to 5 s for a background command to log a line matching $2 in $1.
+wait_for() { local _; for _ in {1..50}; do grep -q -- "$2" "$1" 2>/dev/null && return; sleep 0.1; done; }
 wd() { "$tool" status | jq -r ".modules[\"windows-disks\"]$1"; }
 
 check "status is valid JSON" '[[ $(wd .enabled) == false ]]'
@@ -352,12 +354,12 @@ printf '#!/bin/bash\necho "vm $* path=$PATH" >>"%s/vm.log"\n' "$work" >"$fake_bi
 printf '#!/bin/bash\necho "webapp $*" >>"%s/vm.log"\n' "$work" >"$fake_bin3/omarchy-launch-webapp"
 chmod +x "$fake_bin3"/*
 check "refused while the normal Windows window is open" '! OMARCHY_TOOL_RDP_OPEN=1 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open 2>/dev/null && [[ ! -e $work/vm.log ]]'
-OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3
+OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; wait_for "$work/vm.log" "^webapp "
 check "starts Windows kept alive, without the remote window" 'grep -q "^vm launch --keep-alive path=$repo/bin/no-rdp:" "$work/vm.log"'
 check "opens the Windows screen fitted to the window" 'grep -q "^webapp http://.*127.0.0.1:8006/?resize=scale$" "$work/vm.log"'
 check "no-op RDP shim exits cleanly" 'bash "$repo/bin/no-rdp/xfreerdp3" /v:x'
 rm -f "$work/vm.log"
-OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; sleep 0.3
+OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; wait_for "$work/vm.log" "^webapp "
 check "already running: only opens the screen" '! grep -q "^vm " "$work/vm.log" && grep -q "^webapp " "$work/vm.log"'
 check "Apagar Windows stops the VM" 'PATH="$fake_bin3:$PATH" "$tool" usb-windows console-close && grep -q "^vm stop" "$work/vm.log"'
 check "status says whether the remote window is open" '[[ $(OMARCHY_TOOL_RDP_OPEN=1 wu .rdpOpen) == true && $(OMARCHY_TOOL_RDP_OPEN=0 wu .rdpOpen) == false ]]'
