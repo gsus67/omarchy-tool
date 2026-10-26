@@ -267,7 +267,7 @@ usb_windows_viewer_windows() {
 
 # console-open: Windows on its own screen, where a passed mouse shows.
 usb_windows_console_open() {
-  local user="" pass="" url
+  local url
   [[ -f $COMPOSE_FILE ]] || fail "Windows no está instalado"
   usb_windows_enabled || fail "enciende primero Periféricos en Windows"
   if usb_windows_rdp_open; then
@@ -286,19 +286,11 @@ usb_windows_console_open() {
     hyprctl dispatch "hl.dsp.window.focus({ window = \"address:$open\" })" >/dev/null 2>&1 || true
     return 0
   fi
-  # The viewer is behind the same user and password as Windows itself.
-  # Without the file the viewer asks for them; a failing sed must not end the
-  # script under pipefail before the screen opens.
-  local credentials="$HOME/.config/windows/credentials"
-  if [[ -r $credentials ]]; then
-    user=$(sed -n 's/^USERNAME=//p' "$credentials" | head -n1)
-    pass=$(sed -n 's/^PASSWORD=//p' "$credentials" | head -n1)
-  fi
+  # The viewer asks for the Windows user and password itself (the browser can
+  # remember them). They never go in the URL: a command line is readable by
+  # every process and the URL can end up in the browser history.
   # resize=scale: noVNC fits the Windows screen to the window.
   url="http://127.0.0.1:8006/?resize=scale"
-  if [[ -n $user && -n $pass ]]; then
-    url="http://$(jq -rn --arg v "$user" '$v|@uri'):$(jq -rn --arg v "$pass" '$v|@uri')@127.0.0.1:8006/?resize=scale"
-  fi
   omarchy-launch-webapp "$url" >/dev/null 2>&1 &
   disown
 }
