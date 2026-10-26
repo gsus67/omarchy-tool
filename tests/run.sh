@@ -354,9 +354,13 @@ printf '#!/bin/bash\necho "vm $* path=$PATH" >>"%s/vm.log"\n' "$work" >"$fake_bi
 printf '#!/bin/bash\necho "webapp $*" >>"%s/vm.log"\n' "$work" >"$fake_bin3/omarchy-launch-webapp"
 chmod +x "$fake_bin3"/*
 check "refused while the normal Windows window is open" '! OMARCHY_TOOL_RDP_OPEN=1 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open 2>/dev/null && [[ ! -e $work/vm.log ]]'
-OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; wait_for "$work/vm.log" "^webapp "
+# A credentials file must never reach the viewer's URL (command lines are public).
+creds_home="$work/creds-home"; mkdir -p "$creds_home/.config/windows"
+printf 'USERNAME=docker\nPASSWORD=s3cret\n' >"$creds_home/.config/windows/credentials"
+HOME="$creds_home" OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; wait_for "$work/vm.log" "^webapp "
 check "starts Windows kept alive, without the remote window" 'grep -q "^vm launch --keep-alive path=$repo/bin/no-rdp:" "$work/vm.log"'
-check "opens the Windows screen fitted to the window" 'grep -q "^webapp http://.*127.0.0.1:8006/?resize=scale$" "$work/vm.log"'
+check "opens the Windows screen fitted to the window" 'grep -q "^webapp http://127.0.0.1:8006/?resize=scale$" "$work/vm.log"'
+check "the Windows password never goes in the URL" '! grep -q "s3cret" "$work/vm.log"'
 check "no-op RDP shim exits cleanly" 'bash "$repo/bin/no-rdp/xfreerdp3" /v:x'
 rm -f "$work/vm.log"
 OMARCHY_TOOL_VM_PID=4242 OMARCHY_TOOL_RDP_OPEN=0 PATH="$fake_bin3:$fake_bin2:$PATH" "$tool" usb-windows console-open; wait_for "$work/vm.log" "^webapp "
