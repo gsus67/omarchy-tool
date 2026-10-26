@@ -17,13 +17,16 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux
+        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux diffutils git
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: QML security checks
         run: python -m unittest discover -s tests -v
       - name: Backend tests
+        # Shared folders must live under /home, like on a real install.
+        env:
+          OMARCHY_TOOL_TEST_PARENT: /home/ci
         run: bash tests/run.sh
       - name: Locale tests
         run: bash tests/i18n.sh
