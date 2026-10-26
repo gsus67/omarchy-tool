@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Arch, like Omarchy)
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install test tools
+        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: QML security checks
+        run: python -m unittest discover -s tests -v
+      - name: Backend tests
+        run: bash tests/run.sh
+      - name: Locale tests
+        run: bash tests/i18n.sh
+      - name: Plugin manifest
+        run: jq empty manifest.json
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck (errors)
+        run: shellcheck --severity=error --shell=bash bin/*.sh bin/omarchy-tool bin/modules/*.sh tests/*.sh
+
+  codeql:
+    name: CodeQL (actions)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: actions
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:actions
