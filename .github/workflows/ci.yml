@@ -25,8 +25,13 @@ jobs:
         run: python -m unittest discover -s tests -v
       # As root the scripts ignore the test overrides on purpose, so the tests
       # run as a normal user with a home under /home, like on a real install.
-      - name: Test user
-        run: useradd -m -d /home/ci ci
+      # The self-update test clones this checkout, so it needs a branch and a
+      # repository the test user may read.
+      - name: Test user and local branch
+        run: |
+          useradd -m -d /home/ci ci
+          git config --system --add safe.directory '*'
+          git checkout -q -B ci
       - name: Backend tests
         run: runuser -u ci -- env HOME=/home/ci bash tests/run.sh
       - name: Locale tests
