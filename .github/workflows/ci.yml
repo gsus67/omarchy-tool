@@ -17,7 +17,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux diffutils git shadow
+        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux diffutils git shadow qt6-declarative
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
