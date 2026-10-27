@@ -26,6 +26,12 @@ export OMARCHY_TOOL_APPLICATIONS_DIR="$work/applications"
 export OMARCHY_TOOL_MENU_FILE="$work/omarchy-menu.jsonc"
 export OMARCHY_TOOL_COMPOSE="$work/docker-compose.yml"
 export OMARCHY_TOOL_PRIV=""
+# Every thumbnailer/package test stays inside this fake home and system bin.
+export HOME="$work/home"
+export XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
+export OMARCHY_TOOL_EXE_BIN_DIR="$work/system-bin"
+export OMARCHY_TOOL_THUMBNAILERS_DIR="$XDG_DATA_HOME/thumbnailers"
+mkdir -p "$HOME" "$OMARCHY_TOOL_EXE_BIN_DIR"
 # Never see the real Windows VM: "no VM" unless a test sets a fake pid.
 export OMARCHY_TOOL_VM_PID=""
 export OMARCHY_TOOL_HYPR_DIR="$work/hypr"
@@ -412,6 +418,182 @@ check "disable deletes the rule file" '[[ ! -e $OMARCHY_TOOL_UDEV_RULES ]] && [[
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstall deletes the rule file" '[[ ! -e $OMARCHY_TOOL_UDEV_RULES ]]'
 rm -rf "$OMARCHY_TOOL_CONFIG_DIR" "$OMARCHY_TOOL_STATE_DIR"
+
+# exe-icons: a system-visible thumbnailer, user registration and owned package.
+ei() { "$tool" status | jq -r ".modules[\"exe-icons\"]$1"; }
+exe="$OMARCHY_TOOL_EXE_BIN_DIR/omarchy-tool-exe-thumbnailer"
+entry="$OMARCHY_TOOL_THUMBNAILERS_DIR/omarchy-tool-exe.thumbnailer"
+export OMARCHY_TOOL_TEST_ICOUTILS="$work/icoutils-present"
+export OMARCHY_TOOL_TEST_PACMAN_LOG="$work/pacman.log"
+cat >"$work/quiet-bin/pacman" <<'FAKE'
+#!/bin/bash
+case "$*" in
+  '-Q icoutils') [[ -e $OMARCHY_TOOL_TEST_ICOUTILS ]] ;;
+  '-S --needed --noconfirm icoutils')
+    [[ ${OMARCHY_TOOL_TEST_PACMAN_FAIL:-} != install ]] || exit 1
+    echo "$*" >>"$OMARCHY_TOOL_TEST_PACMAN_LOG"
+    touch "$OMARCHY_TOOL_TEST_ICOUTILS" ;;
+  '-R --noconfirm icoutils')
+    [[ ${OMARCHY_TOOL_TEST_PACMAN_FAIL:-} != remove ]] || exit 1
+    echo "$*" >>"$OMARCHY_TOOL_TEST_PACMAN_LOG"
+    rm -f "$OMARCHY_TOOL_TEST_ICOUTILS" ;;
+  *) exit 1 ;;
+esac
+FAKE
+cat >"$work/priv" <<'FAKE'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TOOL_TEST_PRIV_LOG"
+exec "$@"
+FAKE
+chmod +x "$work/quiet-bin/pacman" "$work/priv"
+export OMARCHY_TOOL_TEST_PRIV_LOG="$work/exe-priv.log"
+check "exe-icons is registered and starts off, applied" '"$tool" modules | grep -x exe-icons >/dev/null && [[ $(ei .enabled) == false && $(ei .applied) == true && $(ei .summary) == Desactivado ]]'
+check "exe-icons cancelled install is reported and changes nothing" '! OMARCHY_TOOL_PRIV=false "$tool" exe-icons enable 2>/dev/null && [[ ! -e $exe && ! -e $entry && ! -e $OMARCHY_TOOL_TEST_ICOUTILS && $(ei .applied) == false ]]'
+check "exe-icons package failure leaves no ownership claim or registration" '! OMARCHY_TOOL_TEST_PACMAN_FAIL=install "$tool" exe-icons enable 2>/dev/null && [[ ! -e $exe && ! -e $entry && ! -e $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed ]]'
+
+# Real PNG chunks: match only Thumb::URI, not another key or arbitrary bytes.
+cache="$XDG_CACHE_HOME/thumbnails"
+failcache="$cache/fail/gnome-thumbnail-factory"
+export OMARCHY_TOOL_TEST_CACHE="$cache"
+python3 - <<'PY'
+from pathlib import Path
+import os
+import struct
+import zlib
+root = Path(os.environ['OMARCHY_TOOL_TEST_CACHE'])
+fail = root / 'fail/gnome-thumbnail-factory'
+fail.mkdir(parents=True)
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+def png(path, uri, key=b'Thumb::URI'):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>2I5B', 1, 1, 8, 6, 0, 0, 0))
+                     + chunk(b'tEXt', b'Comment\0file:///decoy.exe')
+                     + chunk(b'tEXt', key + b'\0' + uri)
+                     + chunk(b'IDAT', zlib.compress(b'\0\0\0\0\0')) + chunk(b'IEND', b''))
+for name, uri in [('exe', b'file:///space%20name.EXE'), ('msi', b'file:///setup.mSi'),
+                  ('dll', b'file:///lib.DLL'), ('text', b'file:///notes.txt'),
+                  ('suffix', b'file:///program.exe.png'), ('query', b'file:///notes?file=.txt')]:
+    png(fail / (name + '.png'), uri)
+png(fail / 'other-key.png', b'file:///app.exe', b'Other::URI')
+png(root / 'normal/keep.png', b'file:///app.exe')
+png(root / 'large/keep.png', b'file:///app.msi')
+png(root / 'fail/other-factory/keep.png', b'file:///app.dll')
+(fail / 'not-png.png').write_bytes(b'Thumb::URI\0file:///app.exe')
+(fail / 'truncated.png').write_bytes(b'\x89PNG\r\n\x1a\n\0\0')
+(fail / 'link.png').symlink_to(root / 'normal/keep.png')
+PY
+export OMARCHY_TOOL_PRIV="$work/priv"
+"$tool" apply
+check "exe-icons installs the exact executable with mode 0755" 'cmp -s "$repo/bin/exe-thumbnailer" "$exe" && [[ $(stat -c %a "$exe") == 755 && $(stat -c %u "$exe") == "$EUID" ]]'
+check "exe-icons uses one privileged install, including the missing package" '[[ $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == 1 ]] && grep -qx -- "-S --needed --noconfirm icoutils" "$OMARCHY_TOOL_TEST_PACMAN_LOG" && [[ -f $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed ]]'
+check "exe-icons registration points to the system copy and all four MIME types" 'grep -qxF "TryExec=$exe" "$entry" && grep -qxF "Exec=$exe %i %o %s" "$entry" && grep -qxF "MimeType=application/x-ms-dos-executable;application/vnd.microsoft.portable-executable;application/x-msdownload;application/x-msi;" "$entry"'
+check "exe-icons enabled status is applied" '[[ $(ei .enabled) == true && $(ei .applied) == true && $(ei .summary) == Activado ]]'
+check "exe-icons clears only failed EXE/MSI/DLL thumbnails, ignoring case" '[[ ! -e $failcache/exe.png && ! -e $failcache/msi.png && ! -e $failcache/dll.png && -f $failcache/text.png && -f $failcache/suffix.png && -f $failcache/query.png && -f $failcache/other-key.png && -f $failcache/not-png.png && -f $failcache/truncated.png && -L $failcache/link.png && -f $cache/normal/keep.png && -f $cache/large/keep.png && -f $cache/fail/other-factory/keep.png ]]'
+check "exe-icons repeated apply requires no privilege" 'OMARCHY_TOOL_PRIV=false "$tool" apply && [[ $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == 1 && $(wc -l <"$OMARCHY_TOOL_TEST_PACMAN_LOG") == 1 ]]'
+rm -f "$entry"
+check "exe-icons repairs user registration without privilege" 'OMARCHY_TOOL_PRIV=false "$tool" exe-icons apply && [[ -f $entry ]]'
+printf '# changed\n' >>"$exe"
+check "exe-icons detects changed system content" '[[ $(ei .applied) == false ]]'
+"$tool" exe-icons apply
+check "exe-icons repairs changed content and remembers package ownership" 'cmp -s "$repo/bin/exe-thumbnailer" "$exe" && [[ -f $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == 2 && $(wc -l <"$OMARCHY_TOOL_TEST_PACMAN_LOG") == 1 ]]'
+chmod 0644 "$exe"
+check "exe-icons detects non-executable permissions" '[[ $(ei .applied) == false ]]'
+"$tool" exe-icons apply
+
+# The extractor preserves paths with spaces, chooses the largest output and
+# cleans its temporary directory on both success and extraction failure.
+mkdir -p "$work/icon-bin" "$work/icon-tmp"
+cat >"$work/icon-bin/wrestool" <<'FAKE'
+#!/bin/bash
+[[ $1 == -x && $2 == --type=14 && $3 == -- && -f $4 ]] || exit 1
+[[ ${OMARCHY_TOOL_TEST_EXTRACT_FAIL:-} != true ]] || exit 1
+printf 'icon resource'
+FAKE
+cat >"$work/icon-bin/icotool" <<'FAKE'
+#!/bin/bash
+[[ $1 == -x && $2 == -o && $4 == -- && -s $5 ]] || exit 1
+[[ ${OMARCHY_TOOL_TEST_NO_PNG:-} != true ]] || exit 0
+printf tiny >"$3/small.png"
+printf 'the largest icon image' >"$3/large icon.png"
+FAKE
+chmod +x "$work/icon-bin/"*
+touch "$work/program name.exe"
+check "exe-thumbnailer copies the largest PNG and cleans temporary files" 'TMPDIR="$work/icon-tmp" PATH="$work/icon-bin:$PATH" "$repo/bin/exe-thumbnailer" "$work/program name.exe" "$work/output icon.png" 128 && [[ $(cat "$work/output icon.png") == "the largest icon image" && -z $(ls -A "$work/icon-tmp") ]]'
+check "exe-thumbnailer cleans up after extraction failure" '! OMARCHY_TOOL_TEST_EXTRACT_FAIL=true TMPDIR="$work/icon-tmp" PATH="$work/icon-bin:$PATH" "$repo/bin/exe-thumbnailer" "$work/program name.exe" "$work/no-output.png" && [[ ! -e $work/no-output.png && -z $(ls -A "$work/icon-tmp") ]]'
+check "exe-thumbnailer fails cleanly if no PNG was extracted" '! OMARCHY_TOOL_TEST_NO_PNG=true TMPDIR="$work/icon-tmp" PATH="$work/icon-bin:$PATH" "$repo/bin/exe-thumbnailer" "$work/program name.exe" "$work/no-output.png" && [[ ! -e $work/no-output.png && -z $(ls -A "$work/icon-tmp") ]]'
+
+check "exe-icons cancelled removal preserves files and ownership" '! OMARCHY_TOOL_PRIV=false "$tool" exe-icons disable 2>/dev/null && [[ -f $exe && -f $entry && -f $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && $(ei .applied) == false ]]'
+priv_before=$(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG")
+"$tool" exe-icons apply
+check "exe-icons removes its files and package in one privileged run" '[[ $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == $((priv_before + 1)) && ! -e $exe && ! -e $entry && ! -e $OMARCHY_TOOL_TEST_ICOUTILS && ! -e $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && ! -e $OMARCHY_TOOL_STATE_DIR/exe-icons.sh && ! -e $OMARCHY_TOOL_STATE_DIR/exe-thumbnailer ]] && grep -qx -- "-R --noconfirm icoutils" "$OMARCHY_TOOL_TEST_PACMAN_LOG"'
+check "exe-icons repeated removal requires no privilege" 'OMARCHY_TOOL_PRIV=false "$tool" exe-icons disable && [[ $(ei .applied) == true ]]'
+
+touch "$OMARCHY_TOOL_TEST_ICOUTILS"
+"$tool" exe-icons enable
+check "exe-icons does not claim a pre-existing package" '[[ ! -e $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed ]]'
+"$tool" exe-icons disable
+check "exe-icons leaves a pre-existing package installed" '[[ -e $OMARCHY_TOOL_TEST_ICOUTILS ]]'
+
+# Original manual setup, deliberately byte-for-byte identical to the supplied
+# references. Modified or incomplete installations must never be adopted.
+legacy_exe="$OMARCHY_TOOL_EXE_BIN_DIR/exe-thumbnailer"
+legacy_entry="$OMARCHY_TOOL_THUMBNAILERS_DIR/exe.thumbnailer"
+cat >"$legacy_exe" <<'LEGACY'
+#!/bin/sh
+# exe-thumbnailer <entrada.exe> <salida.png> [tamaño]
+d=$(mktemp -d) || exit 1
+trap 'rm -rf "$d"' EXIT
+wrestool -x --type=14 "$1" > "$d/i.ico" 2>/dev/null || exit 1
+[ -s "$d/i.ico" ] || exit 1
+icotool -x -o "$d" "$d/i.ico" 2>/dev/null || exit 1
+f=$(ls -S "$d"/*.png 2>/dev/null | head -n1)
+[ -n "$f" ] && cp "$f" "$2"
+LEGACY
+# The entry's own lines vary per PC (e.g. a user's path); what identifies it
+# is the Exec line running the legacy script.
+cat >"$legacy_entry" <<LEGACY
+[Thumbnailer Entry]
+TryExec=$legacy_exe
+Exec=$legacy_exe %i %o %s
+MimeType=application/x-ms-dos-executable;application/vnd.microsoft.portable-executable;application/x-msdownload;
+LEGACY
+cp "$legacy_exe" "$work/legacy-original"
+check "exe-icons recognizes only the exact legacy pair" '"$tool" exe-icons adoptable'
+printf '# edited\n' >>"$legacy_exe"
+check "exe-icons refuses to adopt an edited manual script" '! "$tool" exe-icons adoptable'
+"$tool" exe-icons enable
+check "exe-icons keeps an edited manual installation" '[[ -f $legacy_exe && -f $legacy_entry ]]'
+"$tool" exe-icons disable
+cp "$work/legacy-original" "$legacy_exe"
+cp "$legacy_entry" "$work/legacy-entry"
+sed -i 's|^Exec=.*|Exec=/opt/other-thumbnailer %i %o %s|' "$legacy_entry"
+check "exe-icons refuses to adopt a registration for another program" '! "$tool" exe-icons adoptable'
+cp "$work/legacy-entry" "$legacy_entry"
+priv_before=$(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG")
+"$tool" exe-icons enable
+check "exe-icons adopts both manual files in the single install prompt" '[[ ! -e $legacy_exe && ! -e $legacy_entry && -f $exe && -f $entry && $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == $((priv_before + 1)) ]]'
+check "exe-icons adopted install is idempotent without privilege" 'OMARCHY_TOOL_PRIV=false "$tool" apply'
+"$tool" exe-icons disable
+check "exe-icons adoption keeps pre-existing icoutils on removal" '[[ -f $OMARCHY_TOOL_TEST_ICOUTILS && ! -e $exe && ! -e $entry ]]'
+
+rm -f "$OMARCHY_TOOL_TEST_ICOUTILS"
+"$tool" exe-icons enable
+check "exe-icons package removal failure retains ownership for retry" '! OMARCHY_TOOL_TEST_PACMAN_FAIL=remove "$tool" exe-icons disable 2>/dev/null && [[ -f $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && -f $OMARCHY_TOOL_TEST_ICOUTILS ]]'
+"$tool" exe-icons apply
+check "exe-icons retries package removal even when the executable is gone" '[[ ! -e $OMARCHY_TOOL_TEST_ICOUTILS && ! -e $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && ! -e $entry ]]'
+"$tool" exe-icons enable
+"$tool" apply
+check "exe-icons uninstall cancellation retains state for retry" '! OMARCHY_TOOL_PRIV=false bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin" && [[ -f $OMARCHY_TOOL_STATE_DIR/exe-icons.icoutils-installed && -f $exe ]]'
+priv_before=$(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG")
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
+check "exe-icons copied uninstaller removes system, user, package and module state" '[[ $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == $((priv_before + 1)) && ! -e $exe && ! -e $entry && ! -e $OMARCHY_TOOL_TEST_ICOUTILS && ! -e $OMARCHY_TOOL_STATE_DIR && ! -e $OMARCHY_TOOL_CONFIG_DIR ]]'
+check "exe-icons uninstall is idempotent without privilege" 'OMARCHY_TOOL_PRIV=false bash "$repo/bin/uninstall.sh" "$work/missing-plugin"'
+export OMARCHY_TOOL_PRIV=""
+
+# Extras' Proton module uses the same throwaway session and check helpers.
+# shellcheck source=tests/exe-proton.sh
+source "$repo/tests/exe-proton.sh"
 
 # self-update from an install under Omarchy's plugin folder: a newer commit
 # on the remote gets pulled through Omarchy's updater; an up-to-date one
