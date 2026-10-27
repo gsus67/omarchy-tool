@@ -1,0 +1,22 @@
+#!/bin/bash
+# Extract the largest PNG from a Windows program's own icon resources.
+set -euo pipefail
+[[ $# -ge 2 && $# -le 3 ]] || exit 1
+
+tmp=$(mktemp -d)
+trap 'rm -rf -- "$tmp"' EXIT
+wrestool -x --type=14 -- "$1" >"$tmp/icon.ico" 2>/dev/null
+[[ -s $tmp/icon.ico ]] || exit 1
+icotool -x -o "$tmp" -- "$tmp/icon.ico" 2>/dev/null
+
+largest='' largest_size=0
+for png in "$tmp"/*.png; do
+  [[ -f $png ]] || continue
+  size=$(stat -c %s -- "$png")
+  if ((size > largest_size)); then
+    largest=$png
+    largest_size=$size
+  fi
+done
+[[ -n $largest ]] || exit 1
+cp -- "$largest" "$2"

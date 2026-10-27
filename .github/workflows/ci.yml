@@ -47,7 +47,7 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck (errors)
-        run: shellcheck --severity=error --shell=bash bin/*.sh bin/omarchy-tool bin/modules/*.sh tests/*.sh
+        run: shellcheck --severity=error --shell=bash bin/*.sh bin/omarchy-tool bin/exe-thumbnailer bin/modules/*.sh tests/*.sh
 
   codeql:
     name: CodeQL (actions)
