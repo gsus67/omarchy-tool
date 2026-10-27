@@ -21,6 +21,9 @@ paths stay the same so existing shortcuts keep working.
 - `jq`, `socat`, `acl` (`setfacl`), `polkit` (`pkexec`) and `udev`, all part of
   a standard Omarchy install. The **.exe icons** module installs `icoutils`
   if it is missing; its cache cleanup uses the system's `python3`.
+- **Open .exe with Proton** needs the `multilib` repository enabled. It installs
+  `umu-launcher` if missing and uses `xdg-mime`, `notify-send` and the systemd
+  user session. It never edits `pacman.conf`.
 - The **Windows** modules need Omarchy's Windows VM (`omarchy-windows-vm`,
   based on the `dockurr/windows` image under Docker), already installed from
   the Omarchy menu.
@@ -50,6 +53,7 @@ The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
 
 - **Turning a feature off** removes everything that feature wrote to the
   system. Only your choice is remembered (for example, which disks you ticked).
+  Proton always keeps your Wine prefix, including installed programs and saves.
 - **Removing the plugin** puts the system back as it was: it removes the disks
   from the Windows configuration (asks for your password), and deletes the
   plugin settings and the menu entry. Since `omarchy plugin remove` does not run
@@ -58,7 +62,8 @@ The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
 - `omarchy-tool uninstall` runs the same cleanup by hand (see
   [Command line](#command-line)).
 
-Files the plugin may write outside its folder, all removed by the cleanup:
+Files the plugin may write outside its folder, removed by the cleanup except
+for the Wine prefix, diagnostic logs and umu-managed runtimes/caches:
 
 - `~/.config/omarchy-tool/` (settings) and `~/.local/share/omarchy-tool/`
   (state and the uninstaller copy)
@@ -70,6 +75,12 @@ Files the plugin may write outside its folder, all removed by the cleanup:
 - `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
 - `/usr/local/bin/omarchy-tool-exe-thumbnailer` and
   `~/.local/share/thumbnailers/omarchy-tool-exe.thumbnailer`
+- `~/.local/share/applications/omarchy-tool-run-exe.desktop` and Windows MIME
+  defaults in user `mimeapps.list` files (previous defaults are restored)
+- A GE-Proton version in umu's compatibility directories, removed only if this
+  module downloaded it; pre-existing versions are kept
+- `~/.local/share/umu/default/` (Wine prefix, **always kept**) and
+  `~/.cache/run-exe.log`, `~/.cache/omarchy-tool-proton-prepare.log` (logs, kept)
 - The helpers in the `Omarchy Tool` folder inside the Windows `Shared` folder
   (if drive letters are still set in Windows, **Quitar discos** stays so you
   can remove them, and deletes itself when run)
@@ -155,9 +166,16 @@ Note: with access, any program in your session can talk to that device (for a
 keyboard, that includes reading what you type). Tick only what you are going to
 configure, and untick it afterwards if you like.
 
+### Extras
+
+**Omarchy › Extras** opens a page with a name and switch for each sub-module,
+using the same rows as the main list. Click a name to open its page; its back
+arrow returns to Extras, and Extras' back arrow returns to the main list.
+Extras itself has no switch. Module ids and saved settings stay the same.
+
 ### .exe icons
 
-Under **Files**, makes Files (Nautilus) show each Windows program's own icon.
+Under **Omarchy › Extras**, makes Files (Nautilus) show each Windows program's own icon.
 Enabling installs `icoutils` if missing and copies the versioned
 `bin/exe-thumbnailer` to `/usr/local/bin/omarchy-tool-exe-thumbnailer`, owned
 by root with mode 0755. Nautilus runs thumbnailers inside a bubblewrap sandbox
@@ -175,6 +193,42 @@ are adopted only when both match the original files exactly: both are removed
 in the same privileged run before registering the replacement.
 Turning the module off or uninstalling removes its files and state, and removes
 `icoutils` only if this module installed it. A pre-existing package is kept.
+
+### Open .exe with Proton
+
+Under **Omarchy › Extras**, double-click Windows programs (`.exe`/`.msi`) to run
+with GE-Proton through `umu-run`. Enabling installs `umu-launcher` with
+`pacman -S --needed --noconfirm umu-launcher` in one `pkexec` prompt only when
+missing. If `multilib` is disabled, it reports an error without changing
+`pacman.conf`. A pre-existing package is never removed.
+
+The versioned `bin/run-exe.sh` is installed as a user-owned executable at
+`~/.local/share/omarchy-tool/exe-proton/run-exe`; it never runs as root. A hidden
+`omarchy-tool-run-exe.desktop` handler becomes the default for the five Windows
+executable/installer MIME types. The module saves the previous default for each
+one once, restores them on disable/uninstall, and unsets ones previously empty.
+An exact original `~/.local/bin/run-exe` (SHA-256 match) paired with
+`~/.local/share/applications/run-exe.desktop` whose Exec points to it is adopted:
+both manual files are removed, leaving one handler. A deleted manual handler
+is not restored on disable; modified manual setups are kept.
+
+Preparation runs in a detached systemd user unit, so the panel never waits for
+the download or prefix initialization. It notifies “Preparing GE-Proton…” and
+then “Ready: you can now double-click .exe files”, or reports a failure.
+It uses umu's own `PROTONPATH=GE-Proton umu-run wineboot -u`, and skips this when
+GE-Proton already exists in `~/.local/share/umu/compatibilitytools` or
+`~/.local/share/Steam/compatibilitytools.d`. Only versions downloaded by this
+module are recorded for removal; stopping the module stops background preparation
+first. umu's runtime/cache files remain managed by umu.
+
+The runner uses `msiexec /i` for MSI, sends start/failure notifications and logs
+to `~/.cache/run-exe.log`; preparation logs to
+`~/.cache/omarchy-tool-proton-prepare.log`. Its default prefix is
+`~/.local/share/umu/default` (`GAMEID=umu-default`), matching the manual setup.
+The runner respects `WINEPREFIX`, `GAMEID` and `PROTONPATH` overrides.
+**Disabling or uninstalling never deletes this prefix or its games/saves.**
+If you want to erase them, delete `~/.local/share/umu/default` yourself.
+XDG data/cache locations and umu's `UMU_FOLDERS_PATH` are respected.
 
 ### Plugins
 
@@ -206,6 +260,7 @@ omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
+omarchy-tool exe-proton enable|disable
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
@@ -225,12 +280,14 @@ omarchy-tool plugins on|off io.github.gsus67.omarchy-taskbar
    `tool.run([...])`.
 3. Add it to the `modules` list in `ToolPanel.qml`, with its `group`, next to
    the others in its group. The panel shows it under the group title, with its
-   name and its switch.
+   name and its switch. For an Extras sub-module, use `parent: "extras"`
+   instead of `group`; both levels reuse the same row component.
 
 ## Tests
 
 ```bash
-tests/run.sh
+bash tests/run.sh
+bash tests/i18n.sh
 omarchy plugin validate .
 ```
 

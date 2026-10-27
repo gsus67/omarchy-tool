@@ -79,6 +79,12 @@ if [[ -e $exe_bin || -L $exe_bin || -f $state_dir/exe-icons.icoutils-installed ]
 fi
 rm -f -- "${OMARCHY_TOOL_THUMBNAILERS_DIR:-$data_home/thumbnailers}/omarchy-tool-exe.thumbnailer"
 
+# Proton cleanup is entirely user-side except removal of our own package.
+# The copied script also stops preparation before deleting its inventory.
+if [[ -d $state_dir/exe-proton ]]; then
+  bash "$state_dir/exe-proton/cleanup.sh" || exit 1
+fi
+
 # ~/Windows/Omarchy Tool: keep only Discos › "Quitar discos" while Windows still
 # has letters from "Activar discos" (it deletes itself once run); drop the rest.
 windows_root="${OMARCHY_TOOL_WINDOWS_SHARED:-$HOME/Windows}/Omarchy Tool"

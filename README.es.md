@@ -9,6 +9,19 @@ tema de Omarchy, así que cambia junto con el tema.
 
 El panel, sus módulos, estados y avisos siguen automáticamente el idioma del sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`). Incluye inglés y español; otros idiomas usan inglés como respaldo. Los nombres de discos y periféricos se conservan. Los mensajes de los auxiliares dentro de Windows siguen el idioma de interfaz de Windows; sus nombres de archivo y rutas se mantienen para conservar los accesos existentes.
 
+## Requisitos
+
+- Omarchy con el sistema de plugins de Quickshell (`omarchy plugin`).
+- `jq`, `socat`, `acl` (`setfacl`), `polkit` (`pkexec`) y `udev`, incluidos en
+  Omarchy. **Iconos de .exe** instala `icoutils` si falta y usa `python3` del sistema.
+- **Abrir .exe con Proton** necesita el repositorio `multilib` habilitado. Instala
+  `umu-launcher` si falta y usa `xdg-mime`, `notify-send` y la sesión de usuario
+  de systemd. Nunca modifica `pacman.conf`.
+- Los módulos de **Windows** necesitan la VM de Windows de Omarchy
+  (`omarchy-windows-vm`, basada en `dockurr/windows` bajo Docker), instalada
+  desde el menú de Omarchy.
+- Los cambios en archivos de root piden contraseña con `pkexec`.
+
 ## Instalar, actualizar y desinstalar
 
 ```bash
@@ -31,6 +44,7 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 
 - **Desactivar una función** borra todo lo que esa función escribió en el
   sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
+  Proton conserva siempre el prefijo Wine, con los programas y partidas guardadas.
 - **Eliminar el plugin** deja el sistema como estaba: quita los discos de la
   configuración de Windows (pide tu contraseña) y borra la configuración del
   plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
@@ -38,6 +52,28 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
   del plugin, que el panel lanza al descargarse.
 - `omarchy-tool uninstall` hace esa misma limpieza a mano (ver
   [Línea de comandos](#línea-de-comandos)).
+
+Archivos que el plugin puede escribir fuera de su carpeta, retirados al limpiar
+salvo el prefijo Wine, los registros y los runtimes/cachés gestionados por umu:
+
+- `~/.config/omarchy-tool/` (configuración) y `~/.local/share/omarchy-tool/`
+  (estado y copia del desinstalador)
+- Una entrada en `~/.config/omarchy/extensions/omarchy-menu.jsonc`
+- `~/.config/hypr/omarchy-tool.lua` y una línea protegida en `hyprland.lua`
+  (el atajo **SUPER + ALT + U**)
+- Las líneas `/shared2`, `/shared3` y `/dev/bus/usb` en
+  `/var/lib/omarchy/windows/docker-compose.yml`
+- `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+- `/usr/local/bin/omarchy-tool-exe-thumbnailer` y
+  `~/.local/share/thumbnailers/omarchy-tool-exe.thumbnailer`
+- `~/.local/share/applications/omarchy-tool-run-exe.desktop` y los valores MIME
+  de Windows en los `mimeapps.list` del usuario (se restauran los anteriores)
+- Una versión de GE-Proton en los directorios de compatibilidad de umu, retirada
+  solo si la descargó el módulo; las versiones anteriores se conservan
+- `~/.local/share/umu/default/` (prefijo Wine, **siempre se conserva**) y
+  `~/.cache/run-exe.log`, `~/.cache/omarchy-tool-proton-prepare.log` (registros, conservados)
+- Los auxiliares en la carpeta `Omarchy Tool` de Shared en Windows (si aún hay
+  letras asignadas, **Quitar discos** se conserva y se borra al ejecutarlo)
 
 ## Módulos
 
@@ -119,9 +155,16 @@ Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
 dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
 vayas a configurar y desmárcalo al terminar si quieres.
 
+### Extras
+
+**Omarchy › Extras** abre una página con nombre e interruptor por submódulo,
+con las mismas filas que la lista principal. Pulsa el nombre para abrir su
+página; su flecha vuelve a Extras, y la de Extras vuelve a la lista principal.
+Extras no tiene interruptor. Los ids y la configuración guardada se conservan.
+
 ### Iconos de .exe
 
-En el grupo **Archivos**, hace que Archivos (Nautilus) muestre el icono propio
+En **Omarchy › Extras**, hace que Archivos (Nautilus) muestre el icono propio
 de cada programa de Windows. Al activar, instala `icoutils` si falta y copia
 `bin/exe-thumbnailer`, versionado en el plugin, a
 `/usr/local/bin/omarchy-tool-exe-thumbnailer`, de root y con permisos 0755.
@@ -141,6 +184,43 @@ Adopta la instalación manual `/usr/local/bin/exe-thumbnailer` junto con
 con los originales: borra ambos en la misma ejecución privilegiada antes de
 registrar el sustituto. Desactivar o desinstalar quita los archivos y el estado
 del módulo, e `icoutils` solo si lo instaló el módulo; si ya estaba, lo conserva.
+
+### Abrir .exe con Proton
+
+En **Omarchy › Extras**, abre programas de Windows (`.exe`/`.msi`) con doble
+clic para ejecutarlos con GE-Proton mediante `umu-run`. Al activar, instala
+`umu-launcher` con `pacman -S --needed --noconfirm umu-launcher` en una sola
+petición de `pkexec` solo si falta. Si `multilib` está deshabilitado, muestra
+un error sin modificar `pacman.conf`. Un paquete previo nunca se elimina.
+
+El `bin/run-exe.sh` versionado se instala como ejecutable del usuario en
+`~/.local/share/omarchy-tool/exe-proton/run-exe`; nunca se ejecuta como root.
+El manejador oculto `omarchy-tool-run-exe.desktop` pasa a ser predeterminado
+para los cinco tipos MIME de ejecutables/instaladores Windows. Se guarda una
+sola vez el valor anterior de cada uno; al desactivar/desinstalar se restaura,
+o se quita si estaba vacío. Adopta el `~/.local/bin/run-exe` original exacto
+(SHA-256) junto con `~/.local/share/applications/run-exe.desktop` si su Exec
+apunta a ese script: borra ambos archivos manuales y deja un solo manejador.
+Al desactivar no restaura un manejador manual borrado; conserva las
+instalaciones manuales modificadas.
+
+La preparación usa una unidad separada de systemd de usuario: el panel no
+espera a la descarga ni a inicializar el prefijo. Avisa «Preparando GE-Proton…»
+y después «Listo: ya puedes abrir .exe con doble clic», o indica el fallo.
+Usa el propio mecanismo de umu, `PROTONPATH=GE-Proton umu-run wineboot -u`,
+y lo omite si GE-Proton ya existe en `~/.local/share/umu/compatibilitytools` o
+`~/.local/share/Steam/compatibilitytools.d`. Solo registra para eliminar las
+versiones que descarga el módulo; al desactivar detiene primero la preparación.
+Los archivos de runtime/caché de umu siguen gestionados por umu.
+
+El runner usa `msiexec /i` para MSI, avisa al arrancar/fallar y deja el registro
+en `~/.cache/run-exe.log`; la preparación escribe en
+`~/.cache/omarchy-tool-proton-prepare.log`. Su prefijo predeterminado es
+`~/.local/share/umu/default` (`GAMEID=umu-default`), igual que la instalación
+manual. El runner respeta `WINEPREFIX`, `GAMEID` y `PROTONPATH`.
+**Desactivar o desinstalar nunca borra ese prefijo ni sus juegos/partidas.**
+Si quieres borrarlos, elimina tú `~/.local/share/umu/default`.
+Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
 ### Plugins
 
@@ -173,6 +253,7 @@ omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
+omarchy-tool exe-proton enable|disable
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
@@ -192,11 +273,13 @@ omarchy-tool plugins on|off io.github.gsus67.omarchy-taskbar
    `tool.run([...])`.
 3. Añádelo a la lista `modules` de `ToolPanel.qml`, con su `group`, junto a los
    demás de su grupo. En el panel sale bajo el título del grupo, con su nombre y
-   su interruptor.
+   su interruptor. Para un submódulo de Extras, usa `parent: "extras"` en
+   lugar de `group`; ambos niveles comparten el componente de fila.
 
 ## Pruebas
 
 ```bash
-tests/run.sh
+bash tests/run.sh
+bash tests/i18n.sh
 omarchy plugin validate .
 ```

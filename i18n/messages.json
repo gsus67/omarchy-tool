@@ -98,7 +98,22 @@
     "no se pudieron instalar los iconos de .exe": "could not install .exe icons",
     "no se pudieron quitar los iconos de .exe": "could not remove .exe icons",
     "uso: exe-icons.sh install|remove": "usage: exe-icons.sh install|remove",
-    "se necesita permiso de administrador": "administrator permission is required"
+    "se necesita permiso de administrador": "administrator permission is required",
+    "Extras": "Extras",
+    "Abrir .exe con Proton": "Open .exe with Proton",
+    "Abre programas de Windows (.exe/.msi) con doble clic para ejecutarlos con GE-Proton.": "Double-click Windows programs (.exe/.msi) to run them with GE-Proton.",
+    "El repositorio multilib no está habilitado. Habilítalo antes de activar este módulo.": "The multilib repository is not enabled. Enable it before turning on this module.",
+    "Ejecutando con Proton": "Running with Proton",
+    "Falló: %1": "Failed: %1",
+    "Código %1. Log: %2": "Code %1. Log: %2",
+    "Preparando GE-Proton…": "Preparing GE-Proton…",
+    "Listo: ya puedes abrir .exe con doble clic": "Ready: you can now double-click .exe files",
+    "No se pudo preparar GE-Proton": "Could not prepare GE-Proton",
+    "Consulta el registro: %1": "See the log: %1",
+    "no se pudo desactivar Proton": "could not disable Proton",
+    "no se pudo instalar umu-launcher": "could not install umu-launcher",
+    "no se pudieron configurar los tipos MIME de Windows": "could not configure Windows MIME types",
+    "no se pudo iniciar la preparación de GE-Proton": "could not start GE-Proton preparation"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

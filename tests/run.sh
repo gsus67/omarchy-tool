@@ -591,6 +591,10 @@ check "exe-icons copied uninstaller removes system, user, package and module sta
 check "exe-icons uninstall is idempotent without privilege" 'OMARCHY_TOOL_PRIV=false bash "$repo/bin/uninstall.sh" "$work/missing-plugin"'
 export OMARCHY_TOOL_PRIV=""
 
+# Extras' Proton module uses the same throwaway session and check helpers.
+# shellcheck source=tests/exe-proton.sh
+source "$repo/tests/exe-proton.sh"
+
 # self-update from an install under Omarchy's plugin folder: a newer commit
 # on the remote gets pulled through Omarchy's updater; an up-to-date one
 # doesn't call it.

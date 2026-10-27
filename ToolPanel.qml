@@ -47,10 +47,16 @@ Panel {
     { id: "windows-disks", group: "Windows", title: root.t("Discos en Windows"), source: "modules/WindowsDisks.qml" },
     { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" },
-    { id: "exe-icons", group: root.t("Archivos"), title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
+    { id: "extras", group: "Omarchy", title: root.t("Extras"), switchable: false },
+    { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
+    { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
     { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
 
+  // Both levels use the same list delegate and ModuleButton below.
+  readonly property var listModules: modules.filter(function(module) {
+    return current === null ? !module.parent : current.id === "extras" && module.parent === "extras"
+  })
   readonly property string toolPath: decodeURIComponent(String(Qt.resolvedUrl("bin/omarchy-tool")).replace(/^file:\/\//, ""))
   property var status: ({})
   property var translations: ({})
@@ -80,17 +86,18 @@ Panel {
   function openModule(module) {
     error = ""
     current = module
+    cursorIndex = -1
   }
 
   function moveCursor(delta) {
-    if (current !== null || modules.length === 0) return
-    cursorIndex = cursorIndex < 0 ? 0 : Math.max(0, Math.min(modules.length - 1, cursorIndex + delta))
+    if (listModules.length === 0) return
+    cursorIndex = cursorIndex < 0 ? 0 : Math.max(0, Math.min(listModules.length - 1, cursorIndex + delta))
   }
 
   function back() {
     error = ""
     typing = false
-    current = null
+    current = current && current.parent ? modules.filter(function(module) { return module.id === "extras" })[0] : null
     cursorIndex = -1
   }
 
@@ -119,7 +126,7 @@ Panel {
 
   onOpenedChanged: {
     if (opened) refresh()
-    else back()
+    else { current = null; back() }
   }
 
   readonly property string pluginDir: toolPath.replace(/\/bin\/omarchy-tool$/, "")
@@ -256,7 +263,7 @@ Panel {
       // Esc steps back to the list first, then closes.
       onCloseRequested: root.current ? root.back() : root.close()
       onMoveRequested: function(dx, dy) { root.moveCursor(dy !== 0 ? dy : dx) }
-      onActivateRequested: if (root.current === null && root.modules.length > 0) root.openModule(root.modules[Math.max(0, root.cursorIndex)])
+      onActivateRequested: if (root.listModules.length > 0) root.openModule(root.listModules[Math.max(0, root.cursorIndex)])
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       Flickable {
@@ -304,19 +311,19 @@ Panel {
 
           // List: one button per module, a header where a group starts.
           Repeater {
-            model: root.current === null ? root.modules : []
+            model: root.listModules
 
             Column {
               required property var modelData
               required property int index
               readonly property bool on: root.moduleStatus(modelData.id).enabled === true
-              readonly property bool groupStart: index === 0 || root.modules[index - 1].group !== modelData.group
+              readonly property bool groupStart: !root.current && (index === 0 || root.listModules[index - 1].group !== modelData.group)
               width: column.width
               spacing: Style.space(6)
 
               PanelSectionHeader {
                 visible: parent.groupStart
-                text: String(modelData.group).toUpperCase()
+                text: String(modelData.group || "").toUpperCase()
                 foreground: root.barForeground
                 topPadding: parent.index === 0 ? Math.ceil(fontSize * 0.15) : Style.space(8)
               }
@@ -341,8 +348,8 @@ Panel {
             // Column leaves no gap, so the list shrinks back after a page.
             visible: active
             height: active && item ? item.implicitHeight : 0
-            active: root.current !== null
-            source: root.current ? Qt.resolvedUrl(root.current.source) : ""
+            active: root.current !== null && root.current.id !== "extras"
+            source: active ? Qt.resolvedUrl(root.current.source) : ""
             onLoaded: {
               var id = root.current.id
               item.tool = root
