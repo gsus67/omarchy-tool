@@ -22,17 +22,20 @@ disk_tiles_apply() {
 }
 
 disk_tiles_status() {
-  local enabled=false applied=false
+  local enabled=false applied=false runtime='{"ready":false,"restartRequired":false,"nautilusRunning":false}'
   disk_tiles_enabled && enabled=true
   if [[ $enabled == true ]]; then
     if [[ -f $DISK_TILES_STATE/manage.py ]]; then
       python3 "$DISK_TILES_STATE/manage.py" check "$DISK_TILES_STATE" && applied=true
+      if [[ $applied == true ]]; then
+        runtime=$(python3 "$TOOL_DIR/bin/disk-tiles.py" runtime "$DISK_TILES_STATE")
+      fi
     fi
   elif [[ ! -d $DISK_TILES_STATE ]]; then
     applied=true
   fi
-  jq -n --argjson enabled "$enabled" --argjson applied "$applied" \
-    '{enabled:$enabled, applied:$applied, summary:(if $enabled then "Activado" else "Desactivado" end)}'
+  jq -n --argjson enabled "$enabled" --argjson applied "$applied" --argjson runtime "$runtime" \
+    '$runtime + {enabled:$enabled, applied:$applied, summary:(if $enabled then "Activado" else "Desactivado" end)}'
 }
 
 disk_tiles_enable() {

@@ -47,6 +47,10 @@ class DiskTilesProbe(GObject.GObject, Nautilus.MenuProvider):
                 self.checks.append({"start_on_computer": self.slot.get_property("location").get_uri(),
                                     "capacities": [c[2].get_label() for c in data["cards"].values()]})
                 assert self.slot.get_property("location").get_uri() == "computer:///"
+                runtime = subprocess.run([sys.executable, "-B", os.environ["DISK_TILES_TEST_MANAGER"], "runtime",
+                                          os.environ["DISK_TILES_TEST_STATE"]], check=True, capture_output=True, text=True)
+                assert json.loads(runtime.stdout)["ready"], "installed view must confirm it loaded into Nautilus"
+                self.checks.append("loaded view confirmed by PID, start time and source hash")
                 assert ext.action(self.slot, "open-location", GLib.Variant("s", Gio.File.new_for_path(os.environ["DISK_TILES_TEST_FOLDER"]).get_uri()))
                 self.phase = 1
             elif self.phase == 1:

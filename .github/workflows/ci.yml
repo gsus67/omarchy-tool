@@ -17,12 +17,10 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux diffutils git shadow qt6-declarative
+        run: pacman -Syu --noconfirm --needed bash jq python nodejs gawk sed coreutils findutils util-linux diffutils git shadow qt6-declarative
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: QML security checks
-        run: python -m unittest discover -s tests -v
       # As root the scripts ignore the test overrides on purpose, so the tests
       # run as a normal user with a home under /home, like on a real install.
       # The self-update test clones this checkout, so it needs a branch and a
@@ -32,6 +30,8 @@ jobs:
           useradd -m -d /home/ci ci
           git config --system --add safe.directory '*'
           git checkout -q -B ci
+      - name: Unit, lifecycle, feedback and QML security checks
+        run: runuser -u ci -- python -B -m unittest discover -s tests -v
       - name: Backend tests
         run: runuser -u ci -- env HOME=/home/ci bash tests/run.sh
       - name: Locale tests

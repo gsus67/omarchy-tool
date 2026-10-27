@@ -7,6 +7,11 @@ activan y desactivan con un interruptor. Añade un icono a la barra que abre un
 panel con un módulo por función. El panel usa los componentes y colores del
 tema de Omarchy, así que cambia junto con el tema.
 
+Cada interruptor muestra el cambio en curso y avisa al empezar, terminar o
+fallar. La vista de discos distingue la instalación terminada de la vista ya
+cargada: si Archivos estaba abierto, indica que hay que cerrarlo y volver a
+abrirlo. Las sincronizaciones automáticas al arrancar no generan avisos.
+
 El panel, sus módulos, estados y avisos siguen automáticamente el idioma del sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`). Incluye inglés y español; otros idiomas usan inglés como respaldo. Los nombres de discos y periféricos se conservan. Los mensajes de los auxiliares dentro de Windows siguen el idioma de interfaz de Windows; sus nombres de archivo y rutas se mantienen para conservar los accesos existentes.
 
 ## Requisitos

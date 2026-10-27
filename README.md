@@ -7,6 +7,11 @@ and off with a switch. It adds a bar icon that opens a panel with one module per
 feature. The panel uses Omarchy's theme components and colors, so it changes
 with your theme.
 
+Switches show work in progress and notify when a change starts, finishes or
+fails. Disk tiles distinguishes installed files from a loaded view: if Files
+was already running, it asks you to close and reopen it. Automatic startup
+sync does not generate notifications.
+
 ![Omarchy Tool panel](preview.png)
 
 The panel, its modules, states and notifications follow the system language

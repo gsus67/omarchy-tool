@@ -34,6 +34,21 @@ module; the dormant directory watcher disappears when that Nautilus process
 exits. Re-enabling can be picked up by an existing watcher when the extensions
 directory survives; otherwise close and reopen Files again.
 
+Tool reports **installed** separately from **loaded**. A running Nautilus that
+predates activation keeps the hint “Installed. Close Files and reopen it to load
+the view.” Once a tab has successfully registered the view, its private marker
+records the PID, kernel process start time and extension source hash. Stale PIDs,
+another XDG profile and an old in-memory extension after an update cannot report
+the view as ready. The panel refreshes this state only while open. It never
+force-quits a file manager to clear a pending restart.
+
+Manual switches show their progress in the panel and send start/completion/error
+notifications, even if the panel closes during an operation. A failed operation
+never reports completion; an asynchronous Proton download retains its separate
+ready/error notification. Automatic startup sync stays quiet. Switches cannot
+queue repeated clicks while an action is in progress; the panel waits for the
+post-operation status before reporting the result.
+
 Nautilus no longer exposes a public API for custom views. The extension uses
 the per-tab `NautilusWindowSlot` stack and the `slot.open-location` action. It
 adds a sibling after the native load settles, without reparenting or replacing
@@ -55,7 +70,9 @@ The reference's [MIT notice](NAUTILUS_REFERENCE_LICENSE.txt) is included for att
   existed. Existing rows are reused and never owned by Tool.
 - `$STATE_DIR/disk-tiles/`: copied `manage.py`, an `enabled` marker and
   `owned.json` recording exact paths, original bookmark bytes, hash of the
-  extension and directories created by the feature.
+  extension and directories created by the feature. `loaded-<pid>.json` marks a
+  successfully loaded view; it is removed on graceful shutdown or disable, and
+  stale/interrupted markers are removed by the shared cleanup manager.
 - `$CONFIG_DIR/config.json`: `modules.disk-tiles.enabled`, using Tool's normal
   settings lifecycle. Disabling remembers only the disabled choice; uninstall
   removes Tool's settings.
@@ -89,6 +106,12 @@ owned, and terminates its whole process groups before deleting temporary files.
 It never connects to the user's running Nautilus. Lifecycle unit tests cover
 exact restoration, user edits, replacement symlinks, partial installs, updates,
 owned bytecode, a deleted checkout and failed privileged uninstall steps.
+They also verify progress/completion/error notifications, stale runtime markers,
+profile separation and the panel's actual JavaScript completion/queue logic.
+
+For nonvisual session diagnostics, `omarchy-shell omarchy-tool operation` reports
+the action and runtime state. `omarchy-shell omarchy-tool setEnabled disk-tiles true`
+runs the same guarded panel action as its switch (false disables it).
 
 ### Preview-test incident, 2026-10-27
 

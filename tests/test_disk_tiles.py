@@ -161,6 +161,43 @@ class DiskTilesLifecycle(unittest.TestCase):
         self.assertFalse(own.exists())
         self.assertEqual(other.read_bytes(), b"user's extension")
 
+    def test_runtime_distinguishes_installed_from_loaded_and_rejects_stale_marker(self):
+        self.enable()
+        proc_root = self.root / "proc"
+        proc = proc_root / "456"
+        proc.mkdir(parents=True)
+        (proc / "comm").write_text("nautilus\n")
+        (proc / "environ").write_bytes(("XDG_DATA_HOME=" + os.environ["XDG_DATA_HOME"] + "\0XDG_CONFIG_HOME="
+                                       + os.environ["XDG_CONFIG_HOME"] + "\0").encode())
+        (proc / "stat").write_text("456 (nautilus) " + " ".join(["S"] + ["0"] * 18 + ["1234"]))
+        self.assertEqual(manage.runtime(self.state, proc_root),
+                         {"ready": False, "restartRequired": True, "nautilusRunning": True})
+        marker = self.state / "loaded-456.json"
+        valid = {"pid": 456, "start": "1234", "hash": json.loads((self.state / "owned.json").read_text())["hash"]}
+        marker.write_text(json.dumps(valid))
+        self.assertTrue(manage.runtime(self.state, proc_root)["ready"])
+        for wrong in ({"start": "old-process"}, {"hash": "old-source"}, {"pid": 457}):
+            marker.write_text(json.dumps(valid | wrong))
+            self.assertFalse(manage.runtime(self.state, proc_root)["ready"])
+            self.assertTrue(manage.runtime(self.state, proc_root)["restartRequired"])
+        (proc / "environ").write_bytes(b"XDG_DATA_HOME=/another-profile\0XDG_CONFIG_HOME=/another-profile\0")
+        self.assertFalse(manage.runtime(self.state, proc_root)["nautilusRunning"])
+        manage.disable(self.state)
+        self.assertFalse(self.state.exists())
+
+    def test_installed_without_running_nautilus_waits_for_open_not_restart(self):
+        self.enable()
+        proc_root = self.root / "empty-proc"
+        proc_root.mkdir()
+        self.assertEqual(manage.runtime(self.state, proc_root),
+                         {"ready": False, "restartRequired": False, "nautilusRunning": False})
+
+    def test_cleanup_removes_interrupted_runtime_marker_temporary(self):
+        self.enable()
+        (self.state / ".loaded-interrupted").write_text("partial")
+        manage.disable(self.state)
+        self.assertFalse(self.state.exists())
+
     def test_uninstaller_keeps_state_if_privileged_cleanup_fails(self):
         import subprocess
         for kind in ("compose", "webhid"):
@@ -186,11 +223,13 @@ class DiskTilesLifecycle(unittest.TestCase):
         import sys
         commands = self.root / "fake-bin"
         commands.mkdir()
+        notice_log = self.root / "notices.log"
         # Probe package versions and bindings without requiring GTK in unit CI.
         for name, script in {
             "nautilus": "#!/bin/sh\nexit 0\n",
-            "pacman": "#!/bin/sh\nprintf 'nautilus 51.1-1\\nnautilus-python 4.2.0-1\\n'\n",
+            "pacman": '#!/bin/sh\n[ "${DISK_TILES_TEST_PROBE_FAIL:-0}" != 1 ] || exit 1\nprintf "nautilus 51.1-1\\nnautilus-python 4.2.0-1\\n"\n',
             "python3": "#!/bin/sh\nif [ \"$1\" = -B ] && [ \"$2\" = -c ]; then exit 0; fi\nexec " + shlex.quote(sys.executable) + ' "$@"\n',
+            "omarchy-notification-send": '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DISK_TILES_TEST_NOTICES"\n',
         }.items():
             file = commands / name
             file.write_text(script)
@@ -199,7 +238,8 @@ class DiskTilesLifecycle(unittest.TestCase):
         runtime.mkdir()
         state = self.root / "tool-state"
         config = self.root / "tool-config"
-        env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"],
+        env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"], LC_ALL="C.UTF-8",
+                   DISK_TILES_TEST_NOTICES=str(notice_log),
                    XDG_RUNTIME_DIR=str(runtime), OMARCHY_TOOL_STATE_DIR=str(state),
                    OMARCHY_TOOL_CONFIG_DIR=str(config), OMARCHY_TOOL_WINDOWS_SHARED=str(self.root / "shared"),
                    OMARCHY_TOOL_APPLICATIONS_DIR=str(self.root / "applications"),
@@ -214,9 +254,14 @@ class DiskTilesLifecycle(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             return result
         tool("disk-tiles", "enable")
+        notices = notice_log.read_text().splitlines()
+        self.assertEqual(len(notices), 2)
+        self.assertIn("Preparing and enabling Disk tiles", notices[0])
+        self.assertIn("Installation finished", notices[1])
         self.assertTrue(json.loads(tool("disk-tiles", "status").stdout)["applied"])
         self.assertTrue(self.extension.is_file())
         tool("disk-tiles", "disable")
+        self.assertIn("Cleanup finished", notice_log.read_text().splitlines()[-1])
         self.assertFalse(self.extension.exists())
         self.assertFalse((state / "disk-tiles").exists())
         tool("disk-tiles", "enable")
@@ -227,6 +272,16 @@ class DiskTilesLifecycle(unittest.TestCase):
         self.assertFalse(self.bookmark.exists())
         self.assertFalse(state.exists())
         self.assertFalse(config.exists())
+        notice_log.write_text("")
+        failed = subprocess.run([str(ROOT / "bin/omarchy-tool"), "disk-tiles", "enable"],
+                                env=env | {"DISK_TILES_TEST_PROBE_FAIL": "1"}, capture_output=True, text=True)
+        self.assertNotEqual(failed.returncode, 0)
+        notices = notice_log.read_text().splitlines()
+        self.assertEqual(len(notices), 2)
+        self.assertIn("Preparing and enabling", notices[0])
+        self.assertIn("-u critical", notices[1])
+        self.assertIn("Could not complete", notices[1])
+        self.assertFalse(self.extension.exists())
 
 
 if __name__ == "__main__": unittest.main()

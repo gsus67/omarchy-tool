@@ -12,6 +12,17 @@ Column {
   spacing: Style.space(8)
   Text {
     textFormat: Text.PlainText
+    visible: root.status.enabled === true
+    text: root.tool ? root.tool.diskTilesMessage() : ""
+    color: root.status.applied === false ? Commons.Color.urgent : root.fg
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    font.bold: true
+    wrapMode: Text.Wrap
+    width: parent.width
+  }
+  Text {
+    textFormat: Text.PlainText
     text: root.tool ? root.tool.t("Abre Archivos en Este equipo: discos en mosaicos con espacio libre y total. Las carpetas se abren normalmente. Compatible con Nautilus 50 y 51.") : ""
     color: Qt.darker(root.fg, 1.5)
     font.family: Style.font.family

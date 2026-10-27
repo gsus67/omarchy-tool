@@ -124,6 +124,10 @@ def disable(state):
     if extension.is_symlink() or (extension.exists() and digest(extension.read_bytes()) != owned["hash"]):
         raise ValueError("Our extension was replaced or edited; keep state for manual review")
     (state / "enabled").unlink(missing_ok=True)
+    for marker in state.glob("loaded-*.json"):
+        if marker.stem.removeprefix("loaded-").isdecimal(): marker.unlink()
+    for temporary in state.glob(".loaded-*"):
+        if temporary.is_file() or temporary.is_symlink(): temporary.unlink()
     extension.unlink(missing_ok=True)
     cache = extension.parent / "__pycache__"
     if cache.is_dir() and not cache.is_symlink():
@@ -155,12 +159,50 @@ def disable(state):
     state.rmdir()
 
 
+def runtime(state, proc_root=Path("/proc")):
+    """Installed files and a loaded view are different states. Check both.
+
+    A PID plus kernel start time prevents stale markers/PID reuse from reporting
+    success. The source hash also detects an old in-memory extension after update.
+    """
+    try: expected = json.loads((state / "owned.json").read_text())["hash"]
+    except (OSError, ValueError, KeyError): expected = ""
+    processes = []
+    for proc in proc_root.iterdir():
+        if not proc.name.isdecimal(): continue
+        try:
+            if proc.stat().st_uid != os.getuid() or (proc / "comm").read_text().strip() != "nautilus": continue
+            # Private test sessions and another XDG profile must not make the
+            # user's real view look pending (or count as ready on its behalf).
+            environment = (proc / "environ").read_bytes().split(b"\0")
+            same_profile = True
+            for key, default in (("XDG_DATA_HOME", Path.home() / ".local/share"),
+                                 ("XDG_CONFIG_HOME", Path.home() / ".config")):
+                prefix = (key + "=").encode()
+                value = next((v[len(prefix):].decode(errors="replace") for v in environment if v.startswith(prefix)), str(default))
+                if value != os.environ.get(key, str(default)): same_profile = False
+            if not same_profile: continue
+            start = (proc / "stat").read_text().rsplit(")", 1)[1].split()[19]
+            marker = state / ("loaded-" + proc.name + ".json")
+            try:
+                loaded = json.loads(marker.read_text())
+                ready = (loaded.get("pid") == int(proc.name) and loaded.get("start") == start
+                         and loaded.get("hash") == expected and bool(expected))
+            except (OSError, ValueError): ready = False
+            processes.append(ready)
+        except (OSError, ValueError, IndexError): continue
+    return {"ready": bool(processes) and all(processes),
+            "restartRequired": bool(processes) and not all(processes),
+            "nautilusRunning": bool(processes)}
+
+
 def main():
     action, directory, *extra = sys.argv[1:]
     state = Path(directory).absolute()
     if action == "probe": probe()
     elif action == "enable": enable(state, Path(extra[0]))
     elif action == "disable": disable(state)
+    elif action == "runtime": print(json.dumps(runtime(state)))
     elif action == "check":
         try:
             owned = json.loads((state / "owned.json").read_text())

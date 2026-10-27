@@ -6,6 +6,9 @@ reparent Nautilus's widgets. See docs/DISK_TILES.md for that compatibility
 boundary. No native-code injection, shell commands, mounting or disk writes.
 """
 import os
+import hashlib
+import json
+import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -86,6 +89,8 @@ class DiskTilesExtension(GObject.GObject, Nautilus.MenuProvider):
         self.style = None
         self.monitor = Gio.VolumeMonitor.get()
         self.state = Path(STATE_DIRECTORY) if STATE_DIRECTORY else None
+        self.source_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        self.loaded_marker = self.state / ("loaded-" + str(os.getpid()) + ".json") if self.state else None
         # Watching the installed directory allows on/off/on in the same process.
         # No polling, daemon, retained settings or persistent cache is needed.
         self.file_monitor = Gio.File.new_for_path(str(Path(__file__).parent)).monitor_directory(
@@ -133,6 +138,7 @@ class DiskTilesExtension(GObject.GObject, Nautilus.MenuProvider):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.style,
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.connect(app, "window-added", lambda _app, win: self.window(win))
+        self.connect(app, "shutdown", lambda *_args: self.forget_ready())
         for signal in ("mount-added", "mount-removed", "mount-changed", "volume-added", "volume-removed"):
             self.connect(self.monitor, signal, lambda *_args: self.refresh())
         for win in app.get_windows(): self.window(win)
@@ -193,6 +199,23 @@ class DiskTilesExtension(GObject.GObject, Nautilus.MenuProvider):
         if initial and location.equal(Gio.File.new_for_path(str(Path.home()))):
             self.start_location(slot)
         self.navigation(slot)
+        self.mark_ready()
+
+    def mark_ready(self):
+        if self.loaded_marker is None or not self.active or not (self.state / "enabled").is_file(): return
+        temporary = None
+        try:
+            start = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]
+            descriptor, temporary = tempfile.mkstemp(prefix=".loaded-", dir=self.state)
+            with os.fdopen(descriptor, "w") as output:
+                json.dump({"pid": os.getpid(), "start": start, "hash": self.source_hash}, output)
+            os.replace(temporary, self.loaded_marker)
+        except (OSError, IndexError): pass  # Disabling can remove the directory concurrently.
+        finally:
+            if temporary is not None: Path(temporary).unlink(missing_ok=True)
+
+    def forget_ready(self):
+        if self.loaded_marker is not None: self.loaded_marker.unlink(missing_ok=True)
 
     def action(self, slot, name, parameter=None):
         if slot.activate_action("slot." + name, parameter): return True
@@ -336,6 +359,7 @@ class DiskTilesExtension(GObject.GObject, Nautilus.MenuProvider):
 
     def stop(self):
         self.active = False
+        self.forget_ready()
         for query in self.queries: query.cancel()
         self.queries.clear()
         for identity in self.sources: GLib.source_remove(identity)
