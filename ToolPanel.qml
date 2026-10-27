@@ -48,6 +48,7 @@ Panel {
     { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" },
     { id: "extras", group: "Omarchy", title: root.t("Extras"), switchable: false },
+    { id: "disk-tiles", parent: "extras", title: root.t("Discos en mosaicos"), source: "modules/DiskTiles.qml" },
     { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
     { id: "network-ip", parent: "extras", title: root.t("IP de red"), source: "modules/NetworkIp.qml" },

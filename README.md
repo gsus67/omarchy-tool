@@ -88,6 +88,19 @@ for the Wine prefix, diagnostic logs and umu-managed runtimes/caches:
 
 ## Modules
 
+### Disk tiles (Extras)
+
+A switch to open Files on **This PC**, with disk cards, usage bars and free/total
+space. Opening a drive navigates normally in Nautilus; explicit folder launches
+keep their destination.
+
+Requires Nautilus 50/51, `nautilus-python`, GTK4 and libadwaita. After enabling,
+close Files windows and open Files again. No password, package installation or
+interruption of file operations. Disable/uninstall removes the extension and
+the added bookmark, preserving existing bookmarks and user edits. The view uses
+internal Nautilus structures; see [Disk tiles](docs/DISK_TILES.md) for compatibility,
+footprint and tests.
+
 ### Disks in Windows
 
 Shares disks with Omarchy's Windows VM the same way Omarchy shares `~/Windows`:

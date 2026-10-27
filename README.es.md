@@ -78,6 +78,19 @@ salvo el prefijo Wine, los registros y los runtimes/cachés gestionados por umu:
 
 ## Módulos
 
+### Discos en mosaicos (Extras)
+
+Un interruptor para abrir Archivos en **Este equipo**, con los discos en mosaicos,
+barra de ocupación y espacio libre y total. Al abrir un disco navegas normalmente
+en Nautilus; las carpetas abiertas por su ruta mantienen su destino.
+
+Requiere Nautilus 50/51, `nautilus-python`, GTK4 y libadwaita. Después de activar,
+cierra las ventanas de Archivos y vuelve a abrirlo. No pide contraseña, instala
+paquetes ni interrumpe operaciones de archivos. Al desactivar o desinstalar se
+retiran la extensión y el acceso añadido, conservando marcadores y cambios del
+usuario. La integración depende de estructuras internas de Nautilus; detalles,
+huella y pruebas en [Discos en mosaicos](docs/DISK_TILES.md).
+
 ### Discos en Windows
 
 Comparte discos con la VM de Windows de Omarchy igual que Omarchy

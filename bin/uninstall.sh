@@ -46,9 +46,9 @@ elif [[ -f $state_dir/windows-disks.applied && -f $state_dir/compose-shares.sh ]
 fi
 if [[ -n $editor ]]; then
   if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
-    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$editor" || true
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$editor" || exit 1
   else
-    pkexec /usr/bin/bash "$editor" || true
+    pkexec /usr/bin/bash "$editor" || exit 1
   fi
 fi
 
@@ -56,9 +56,9 @@ fi
 webhid_rules="${OMARCHY_TOOL_UDEV_RULES:-/etc/udev/rules.d/70-omarchy-tool-webhid.rules}"
 if [[ -f $webhid_rules && -f $state_dir/udev-webhid.sh ]]; then
   if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
-    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$state_dir/udev-webhid.sh" || true
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$state_dir/udev-webhid.sh" || exit 1
   else
-    pkexec /usr/bin/bash "$state_dir/udev-webhid.sh" || true
+    pkexec /usr/bin/bash "$state_dir/udev-webhid.sh" || exit 1
   fi
 fi
 
@@ -83,6 +83,11 @@ rm -f -- "${OMARCHY_TOOL_THUMBNAILERS_DIR:-$data_home/thumbnailers}/omarchy-tool
 # The copied script also stops preparation before deleting its inventory.
 if [[ -d $state_dir/exe-proton ]]; then
   bash "$state_dir/exe-proton/cleanup.sh" || exit 1
+fi
+
+# The extension and bookmark are user-owned; keep the ledger on any failure.
+if [[ -f $state_dir/disk-tiles/manage.py ]]; then
+  python3 "$state_dir/disk-tiles/manage.py" disable "$state_dir/disk-tiles" || exit 1
 fi
 
 # ~/Windows/Omarchy Tool: keep only Discos › "Quitar discos" while Windows still

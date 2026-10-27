@@ -134,7 +134,12 @@
     "IP/prefijo": "IP/prefix",
     "Puerta de enlace": "Gateway",
     "Conexión: %1 (%2)": "Connection: %1 (%2)",
-    "IP fija %1 con puerta de enlace %2.": "Static IP %1 with gateway %2."
+    "IP fija %1 con puerta de enlace %2.": "Static IP %1 with gateway %2.",
+    "Discos en mosaicos": "Disk tiles",
+    "no se pudo activar Discos en mosaicos": "could not enable Disk tiles",
+    "no se pudo desactivar Discos en mosaicos": "could not disable Disk tiles",
+    "Abre Archivos en Este equipo: discos en mosaicos con espacio libre y total. Las carpetas se abren normalmente. Compatible con Nautilus 50 y 51.": "Open Files on This PC: disk tiles with free and total space. Folders open normally. Supports Nautilus 50 and 51.",
+    "Después de activarlo, cierra todas las ventanas de Archivos y vuelve a abrirlo. Al desactivarlo se retiran la vista y el acceso Este equipo.": "After enabling it, close all Files windows and open Files again. Disabling removes the view and the This PC shortcut."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
