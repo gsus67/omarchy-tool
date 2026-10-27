@@ -83,6 +83,21 @@ python -B tests/disk_tiles_integration.py
 The last command starts a private D-Bus session and Broadway display with
 temporary XDG directories. It checks default startup, capacities, real folder
 navigation/Back, tabs, explicit-folder launches, live disable and re-enable.
+LocalSearch/Tracker activation is blocked only on that private bus: storage
+tests do not need a search index. The test asserts neither indexer bus name is
+owned, and terminates its whole process groups before deleting temporary files.
 It never connects to the user's running Nautilus. Lifecycle unit tests cover
 exact restoration, user edits, replacement symlinks, partial installs, updates,
 owned bytecode, a deleted checkout and failed privileged uninstall steps.
+
+### Preview-test incident, 2026-10-27
+
+An earlier ad-hoc screenshot harness reused one temporary XDG cache across
+preview sessions and did not terminate all D-Bus-activated helpers. A test
+LocalSearch process (PID 1209372) aborted at 14:55:16 CDT on `database is locked`,
+in `sparql_buffer_flush_cb` (`tracker-indexer.c:955`). Its core environment
+confirmed every XDG directory pointed into `/tmp/omarchy-tool-disk-tiles-preview`.
+This was the preview's index database, not the user's normal search index.
+The extracted diagnostic core was deleted. Preview helpers and their GVfs mount
+were retired; the reusable integration test now explicitly prevents indexer
+activation. No user service, search settings or index database was reset.

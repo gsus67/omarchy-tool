@@ -90,6 +90,13 @@ class DiskTilesProbe(GObject.GObject, Nautilus.MenuProvider):
             elif self.phase == 6:
                 if not ext.active or not ext.slots: return True
                 self.checks.append("re-enable works in the same Nautilus process")
+                bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+                for name in ("org.freedesktop.Tracker3.Miner.Files", "org.freedesktop.LocalSearch3"):
+                    reply = bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                          "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", (name,)),
+                                          GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+                    assert not reply.unpack()[0], "test must not start the search indexer"
+                self.checks.append("search indexer was not activated on the test bus")
                 Path(os.environ["DISK_TILES_TEST_RESULT"]).write_text(json.dumps({"ok": True, "checks": self.checks}))
                 return False
         except Exception:
@@ -138,6 +145,14 @@ def run():
                         str(ROOT / "nautilus/disk_tiles.py")], env=env, check=True)
         extensions = work / "data/nautilus-python/extensions"
         (extensions / "zz_disk_tiles_probe.py").write_text(PROBE)
+        # Storage/navigation tests do not need a search index. Override activation
+        # only on this private bus, so it cannot start an indexer over the real
+        # Home tree or race another test's temporary index database.
+        services = work / "data/dbus-1/services"
+        services.mkdir(parents=True)
+        for name in ("org.freedesktop.Tracker3.Miner.Files", "org.freedesktop.LocalSearch3"):
+            (services / (name + ".service")).write_text(
+                "[D-BUS Service]\nName=" + name + "\nExec=/usr/bin/false\n")
         broadway = app = None
         with (work / "broadway.log").open("w") as display_log, (work / "nautilus.log").open("w") as app_log:
             try:
