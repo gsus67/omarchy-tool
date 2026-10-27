@@ -19,7 +19,8 @@ paths stay the same so existing shortcuts keep working.
 
 - Omarchy with the Quickshell shell plugin system (`omarchy plugin`).
 - `jq`, `socat`, `acl` (`setfacl`), `polkit` (`pkexec`) and `udev`, all part of
-  a standard Omarchy install. Nothing is installed automatically.
+  a standard Omarchy install. The **.exe icons** module installs `icoutils`
+  if it is missing; its cache cleanup uses the system's `python3`.
 - The **Windows** modules need Omarchy's Windows VM (`omarchy-windows-vm`,
   based on the `dockurr/windows` image under Docker), already installed from
   the Omarchy menu.
@@ -67,6 +68,8 @@ Files the plugin may write outside its folder, all removed by the cleanup:
 - The `/shared2`, `/shared3` and `/dev/bus/usb` lines in
   `/var/lib/omarchy/windows/docker-compose.yml`
 - `/etc/udev/rules.d/70-omarchy-tool-webhid.rules`
+- `/usr/local/bin/omarchy-tool-exe-thumbnailer` and
+  `~/.local/share/thumbnailers/omarchy-tool-exe.thumbnailer`
 - The helpers in the `Omarchy Tool` folder inside the Windows `Shared` folder
   (if drive letters are still set in Windows, **Quitar discos** stays so you
   can remove them, and deletes itself when run)
@@ -152,6 +155,27 @@ Note: with access, any program in your session can talk to that device (for a
 keyboard, that includes reading what you type). Tick only what you are going to
 configure, and untick it afterwards if you like.
 
+### .exe icons
+
+Under **Files**, makes Files (Nautilus) show each Windows program's own icon.
+Enabling installs `icoutils` if missing and copies the versioned
+`bin/exe-thumbnailer` to `/usr/local/bin/omarchy-tool-exe-thumbnailer`, owned
+by root with mode 0755. Nautilus runs thumbnailers inside a bubblewrap sandbox
+that only sees system directories, so a script under your home cannot run.
+The user registration at `~/.local/share/thumbnailers/omarchy-tool-exe.thumbnailer`
+handles EXE, MSI and DLL executable MIME types. Only failed GNOME thumbnail
+cache entries whose `Thumb::URI` ends in `.exe`, `.msi` or `.dll` (ignoring
+case) are cleared so Files retries; other thumbnails stay in place.
+
+`bin/exe-icons.sh` performs installation in one `pkexec` prompt, and removal in
+one prompt. Reapplying an identical root-owned system copy asks for no password;
+the user registration can be repaired without a prompt. The original manual
+`/usr/local/bin/exe-thumbnailer` and `~/.local/share/thumbnailers/exe.thumbnailer`
+are adopted only when both match the original files exactly: both are removed
+in the same privileged run before registering the replacement.
+Turning the module off or uninstalling removes its files and state, and removes
+`icoutils` only if this module installed it. A pre-existing package is kept.
+
 ### Plugins
 
 Turns your installed Omarchy plugins on and off from the panel, with one switch
@@ -181,6 +205,7 @@ omarchy-tool windows-disks letter /mnt/data X    # or "next"
 omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
+omarchy-tool exe-icons enable|disable
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a

@@ -90,7 +90,15 @@
     "no se pudo desactivar %1": "could not turn off %1",
     "Barra completa · en uso": "Full bar · in use",
     "Barra completa · se elige con omarchy bar use": "Full bar · pick it with omarchy bar use",
-    "%1 no se puede activar o desactivar": "%1 can't be turned on or off"
+    "%1 no se puede activar o desactivar": "%1 can't be turned on or off",
+    "Archivos": "Files",
+    "Iconos de .exe": ".exe icons",
+    "Archivos (Nautilus) muestra el icono propio de cada programa de Windows en los archivos .exe.": "Files (Nautilus) shows each Windows program’s own icon on .exe files.",
+    "Activado": "Enabled",
+    "no se pudieron instalar los iconos de .exe": "could not install .exe icons",
+    "no se pudieron quitar los iconos de .exe": "could not remove .exe icons",
+    "uso: exe-icons.sh install|remove": "usage: exe-icons.sh install|remove",
+    "se necesita permiso de administrador": "administrator permission is required"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

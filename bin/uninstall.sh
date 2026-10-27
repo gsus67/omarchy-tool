@@ -29,6 +29,12 @@ state_dir="${OMARCHY_TOOL_STATE_DIR:-$data_home/omarchy-tool}"
 config_dir="${OMARCHY_TOOL_CONFIG_DIR:-$config_home/omarchy-tool}"
 desktop="${OMARCHY_TOOL_APPLICATIONS_DIR:-$data_home/applications}/windows-vm.desktop"
 menu="${OMARCHY_TOOL_MENU_FILE:-$config_home/omarchy/extensions/omarchy-menu.jsonc}"
+if [[ -f $state_dir/i18n.sh ]]; then
+  # shellcheck source=/dev/null
+  source "$state_dir/i18n.sh"
+else
+  tool_text() { printf '%s' "$1"; }
+fi
 
 # What we added to the Windows VM (shared disks, USB devices) lives in
 # Omarchy's root-owned compose; taking it out needs the password once.
@@ -55,6 +61,23 @@ if [[ -f $webhid_rules && -f $state_dir/udev-webhid.sh ]]; then
     pkexec /usr/bin/bash "$state_dir/udev-webhid.sh" || true
   fi
 fi
+
+# Windows program icons: remove the system helper and only our own package.
+# Keep the copied helper and ownership marker if the password is cancelled,
+# so a later uninstall can finish instead of forgetting an installed package.
+exe_bin="${OMARCHY_TOOL_EXE_BIN_DIR:-/usr/local/bin}/omarchy-tool-exe-thumbnailer"
+if [[ -e $exe_bin || -L $exe_bin || -f $state_dir/exe-icons.icoutils-installed ]]; then
+  if [[ ! -f $state_dir/exe-icons.sh ]]; then
+    printf 'omarchy-tool: %s\n' "$(tool_text 'no se pudieron quitar los iconos de .exe')" >&2
+    exit 1
+  fi
+  if [[ -n ${OMARCHY_TOOL_PRIV+x} ]]; then
+    ${OMARCHY_TOOL_PRIV:+$OMARCHY_TOOL_PRIV} /usr/bin/bash "$state_dir/exe-icons.sh" remove || exit 1
+  else
+    pkexec /usr/bin/bash "$state_dir/exe-icons.sh" remove || exit 1
+  fi
+fi
+rm -f -- "${OMARCHY_TOOL_THUMBNAILERS_DIR:-$data_home/thumbnailers}/omarchy-tool-exe.thumbnailer"
 
 # ~/Windows/Omarchy Tool: keep only Discos › "Quitar discos" while Windows still
 # has letters from "Activar discos" (it deletes itself once run); drop the rest.

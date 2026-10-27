@@ -119,6 +119,29 @@ Ojo: con acceso, cualquier programa de tu sesión puede hablar con ese
 dispositivo (en un teclado, también leer lo que escribes). Marca solo lo que
 vayas a configurar y desmárcalo al terminar si quieres.
 
+### Iconos de .exe
+
+En el grupo **Archivos**, hace que Archivos (Nautilus) muestre el icono propio
+de cada programa de Windows. Al activar, instala `icoutils` si falta y copia
+`bin/exe-thumbnailer`, versionado en el plugin, a
+`/usr/local/bin/omarchy-tool-exe-thumbnailer`, de root y con permisos 0755.
+Nautilus ejecuta los generadores de miniaturas en una caja de bubblewrap que
+solo ve directorios del sistema: una copia bajo tu carpeta personal no funciona.
+El registro `~/.local/share/thumbnailers/omarchy-tool-exe.thumbnailer` admite
+los tipos MIME de ejecutables EXE, MSI y DLL. Con `python3` del sistema, solo
+borra los fallos de miniaturas de GNOME cuyo `Thumb::URI` termina en `.exe`,
+`.msi` o `.dll` (sin distinguir mayúsculas), para que Archivos vuelva a probar.
+Las demás miniaturas se conservan.
+
+`bin/exe-icons.sh` hace la instalación con una sola petición de contraseña por
+`pkexec`, y la retirada con otra. Si la copia de root ya tiene el mismo contenido,
+aplicar no pide contraseña; el registro de usuario se puede reparar sin pedirla.
+Adopta la instalación manual `/usr/local/bin/exe-thumbnailer` junto con
+`~/.local/share/thumbnailers/exe.thumbnailer` solo si ambos coinciden exactamente
+con los originales: borra ambos en la misma ejecución privilegiada antes de
+registrar el sustituto. Desactivar o desinstalar quita los archivos y el estado
+del módulo, e `icoutils` solo si lo instaló el módulo; si ya estaba, lo conserva.
+
 ### Plugins
 
 Activa y desactiva desde el panel tus plugins de Omarchy instalados, con un
@@ -149,6 +172,7 @@ omarchy-tool windows-disks letter /mnt/datos X   # o "next"
 omarchy-tool web-devices enable|disable
 omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
+omarchy-tool exe-icons enable|disable
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a

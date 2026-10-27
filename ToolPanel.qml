@@ -47,6 +47,7 @@ Panel {
     { id: "windows-disks", group: "Windows", title: root.t("Discos en Windows"), source: "modules/WindowsDisks.qml" },
     { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" },
+    { id: "exe-icons", group: root.t("Archivos"), title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
 
