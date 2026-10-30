@@ -262,8 +262,9 @@ el prefijo exista.
 - **Con Proton abierto** (un `wineserver` en marcha) no se puede guardar ni cargar.
 - **Dónde:** `<carpeta>/Partidas Proton/`, con `~/Documents` como carpeta por defecto.
   La carpeta elegida debe existir y estar fuera del prefijo. Si más tarde falta su
-  subcarpeta `Partidas Proton`, la copia falla en vez de crearla de nuevo, para que
-  un disco sin montar nunca llene el disco del sistema. Las copias son privadas
+  subcarpeta `Partidas Proton`, o su disco está en `/etc/fstab` y no está montado, la
+  copia falla en vez de escribir en el disco del sistema. Se rechaza una carpeta que
+  se borraría al desinstalar. Las copias son privadas
   (`0700`/`0600`); los discos sin permisos Unix, como NTFS, no pueden garantizarlo,
   y un disco compartido con la VM de Windows las deja visibles allí. `AppData` puede
   contener sesiones de programas.

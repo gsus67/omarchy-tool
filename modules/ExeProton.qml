@@ -35,9 +35,7 @@ Column {
 
   Connections {
     target: root.tool
-    function onBusyChanged() {
-      if (!root.tool.busy) root.requestRead(["saves-list"])
-    }
+    function onBusyChanged() { root.busyChanged() }
   }
 
   Process {
@@ -47,6 +45,14 @@ Column {
       onStreamFinished: root.finishRead(root.activeRead, text)
     }
     onRunningChanged: if (!running) Qt.callLater(root.pumpRead)
+  }
+
+  // A change may come from elsewhere, and what was read no longer describes the disk.
+  function busyChanged() {
+    if (tool.busy) {
+      cancelView()
+      listGeneration += 1
+    } else requestRead(["saves-list"])
   }
 
   // One read at a time; the newest request of each kind waits for its turn.
@@ -76,6 +82,8 @@ Column {
       } else if (isList) {
         readError = ""
         listing = answer
+        var copies = answer.copies || []
+        if (selectedCopy !== "" && !copies.some(function(copy) { return copy.name === selectedCopy })) cancelView()
       } else {
         readError = ""
         preview = answer
@@ -85,6 +93,7 @@ Column {
   }
 
   function viewCopy(name) {
+    if (!tool || tool.busy) return
     selectedCopy = name
     preview = null
     readError = ""
@@ -301,6 +310,7 @@ Column {
             fontSize: Style.font.bodySmall
             foreground: root.fg
             active: copyRow.selected
+            enabled: root.canChange
             onClicked: root.viewCopy(copyRow.modelData.name)
           }
         }

@@ -27,6 +27,7 @@ EXCLUDED = ("AppData/Local/dxvk", "AppData/Local/Temp", "AppData/Local/Microsoft
 COPY_NAME = re.compile(r"^(partidas|automatica|antes-de-cargar)-\d{8}-\d{6}\.tar\.zst$")
 PROC_DIRECTORY = Path("/proc")
 COPIES_SUBFOLDER = "Partidas Proton"
+FSTAB_FILE = Path("/etc/fstab")
 AUTO_KEEP = 5
 
 
@@ -38,11 +39,14 @@ class SavesError(Exception):
         self.source = source
 
 
-def module_config():
+def config_directory():
     home = Path.home()
-    directory = os.environ.get("OMARCHY_TOOL_CONFIG_DIR") or Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "omarchy-tool"
+    return Path(os.environ.get("OMARCHY_TOOL_CONFIG_DIR") or Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "omarchy-tool")
+
+
+def module_config():
     try:
-        config = json.loads((Path(directory) / "config.json").read_text())
+        config = json.loads((config_directory() / "config.json").read_text())
         return config["modules"]["exe-proton"]
     except (OSError, ValueError, KeyError, TypeError):
         return {}
@@ -66,8 +70,18 @@ def excluded(name):
     return any(name == path or name.startswith(path + "/") for path in EXCLUDED)
 
 
+def require_real_user_directory(prefix):
+    """The prefix is canonical, so a link below it could only lead outside."""
+    path = prefix
+    for part in USER_DIRECTORY.split("/"):
+        path = path / part
+        if path.is_symlink():
+            raise SavesError("el prefijo de Proton apunta fuera de su carpeta")
+
+
 def scan_prefix(prefix):
     """Relative names and sizes of what a copy holds; links and special files never count."""
+    require_real_user_directory(prefix)
     user = prefix / USER_DIRECTORY
     entries = []
 
@@ -134,11 +148,27 @@ def list_copies(copies):
     return sorted(found, key=lambda copy: (-copy["timestamp"], copy["name"]))
 
 
+def unmounted_disk(path):
+    """Whether path lies on a disk fstab knows about and that isn't mounted now."""
+    try:
+        lines = FSTAB_FILE.read_text(errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 2 or fields[0].startswith("#") or not fields[1].startswith("/"):
+            continue
+        target = Path(fields[1].replace("\\040", " "))
+        if (target == path or target in path.parents) and not os.path.ismount(target):
+            return True
+    return False
+
+
 def folder_available(copies):
     """A chosen folder keeps its subfolder: without it the disk is probably not mounted,
     and creating it would write to the system disk. The default folder is made on demand."""
     chosen = module_config().get("savesFolder") and not os.environ.get("OMARCHY_TOOL_PROTON_SAVES_DIR")
-    return not chosen or copies.is_dir()
+    return not chosen or (copies.is_dir() and not unmounted_disk(copies))
 
 
 def list_saves():
@@ -197,6 +227,16 @@ def validated_members(archive):
                 if remaining:
                     raise SavesError("la copia está dañada")
             members.append(member)
+        # tarfile reads a bad header as the end of the archive: check it really is,
+        # then read on so the compressed stream's own end and checksum are verified.
+        stream = archive.fileobj
+        stream.seek(archive.offset)
+        end = stream.read(tarfile.BLOCKSIZE)
+        if len(end) != tarfile.BLOCKSIZE or any(end):
+            raise SavesError("la copia está dañada")
+        while chunk := stream.read(1 << 20):
+            if any(chunk):
+                raise SavesError("la copia está dañada")
     except (tarfile.TarError, EOFError, OSError, ValueError, zstd.ZstdError) as error:
         raise SavesError("la copia está dañada") from error
     for name in seen:
@@ -285,7 +325,7 @@ def write_copy(prefix, copies, kind, now=None):
         private_directory(copies)
         descriptor, temporary = tempfile.mkstemp(prefix=f".{kind}-", suffix=".tmp", dir=copies)
         with os.fdopen(descriptor, "wb") as output:
-            with tarfile.open(fileobj=output, mode="w:zst") as archive:
+            with tarfile.open(fileobj=output, mode="w:zst", options={zstd.CompressionParameter.checksum_flag: 1}) as archive:
                 for member, _ in scan_prefix(prefix):
                     add_member(archive, user, member)
             output.flush()
@@ -326,20 +366,24 @@ def fingerprint(prefix, copies, entries):
     return digest.hexdigest()
 
 
-def prune_automatic(copies, keep=AUTO_KEEP):
-    """Only automatic copies are ever deleted, the oldest first."""
-    automatic = [copy for copy in list_copies(copies) if copy["kind"] == "automatica"]
-    for copy in automatic[keep:]:
+def prune_automatic(copies, newest, keep=AUTO_KEEP):
+    """Only automatic copies are ever deleted, the oldest first, and never the one just
+    made: a corrected clock can make older copies look newer."""
+    others = [copy for copy in list_copies(copies) if copy["kind"] == "automatica" and copy["name"] != newest]
+    for copy in others[keep - 1:]:
         try:
             (copies / copy["name"]).unlink()
         except OSError:
             pass  # Retried at the next automatic copy.
 
 
-def fingerprint_file():
+def state_directory():
     home = Path.home()
-    state = os.environ.get("OMARCHY_TOOL_STATE_DIR") or Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "omarchy-tool"
-    return Path(state) / "exe-proton-saves.fingerprint"
+    return Path(os.environ.get("OMARCHY_TOOL_STATE_DIR") or Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "omarchy-tool")
+
+
+def fingerprint_file():
+    return state_directory() / "exe-proton-saves.fingerprint"
 
 
 def auto_copy():
@@ -365,7 +409,7 @@ def auto_copy():
         record.write_text(current)
     except OSError as error:
         raise SavesError("no se pudo guardar la copia") from error
-    prune_automatic(copies)
+    prune_automatic(copies, name)
     return {"name": name}
 
 
@@ -382,6 +426,12 @@ def choose_folder(path):
     prefix = Path(os.environ.get("WINEPREFIX") or Path.home() / ".local/share/umu/default").resolve()
     if folder == prefix or prefix in folder.parents:
         raise SavesError("la carpeta de copias no puede estar dentro del prefijo de Proton")
+    for removed in (state_directory(), config_directory(), Path(__file__).resolve().parents[1]):
+        removed = removed.resolve()
+        if folder == removed or removed in folder.parents:
+            raise SavesError("esa carpeta se borra al desinstalar; elige otra")
+    if unmounted_disk(folder):
+        raise SavesError("ese disco no está montado")
     copies = folder / COPIES_SUBFOLDER
     if copies.is_symlink():
         raise SavesError("la carpeta de copias no puede ser un enlace")
@@ -394,8 +444,9 @@ def choose_folder(path):
 
 def validate_destinations(prefix, members):
     """Refuse a load that would go through a link or change what a path is."""
+    require_real_user_directory(prefix)
     user = prefix / USER_DIRECTORY
-    if user.is_symlink() or not user.is_dir():
+    if not user.is_dir():
         raise SavesError("la copia no encaja con lo que hay en el prefijo")
     for member in members:
         path = user

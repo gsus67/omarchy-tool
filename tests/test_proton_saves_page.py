@@ -9,7 +9,7 @@ from test_operation_feedback import function
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "modules/ExeProton.qml").read_text()
 FUNCTIONS = ("requestRead", "pumpRead", "finishRead", "viewCopy", "cancelView", "change", "saveData", "loadData",
-             "formatBytes", "areaLabel", "setFolder", "setAuto")
+             "formatBytes", "areaLabel", "setFolder", "setAuto", "busyChanged")
 PREAMBLE = """
 const assert = require('node:assert/strict');
 const mutations = [];
@@ -101,7 +101,7 @@ class ProtonSavesPage(unittest.TestCase):
           root.viewCopy(copyB);
           finishActive(JSON.stringify(previewA));
           assert.equal(readProc.command[2], 'saves-list');
-          finishActive(JSON.stringify({prefixExists: true, groups: [], copies: []}));
+          finishActive(JSON.stringify({prefixExists: true, groups: [], copies: [{name: copyB}]}));
           assert.equal(root.listing.prefixExists, true);
           assert.equal(readProc.command[3], copyB);
           finishActive(JSON.stringify({name: copyB, groups: []}));
@@ -150,6 +150,39 @@ class ProtonSavesPage(unittest.TestCase):
           root.setAuto(false);
           assert.deepEqual(mutations, [['exe-proton', 'saves-folder', '/mnt/datos con espacio'],
             ['exe-proton', 'saves-auto', 'on'], ['exe-proton', 'saves-auto', 'off']]);
+        """)
+
+    def test_a_copy_cannot_be_opened_while_a_change_runs(self):
+        self.run_page("""
+          tool.busy = true;
+          root.viewCopy(copyA);
+          assert.equal(root.selectedCopy, '');
+          assert.equal(readProc.running, false);
+        """)
+
+    def test_a_change_starting_elsewhere_clears_the_preview(self):
+        self.run_page("""
+          root.viewCopy(copyA);
+          finishActive(JSON.stringify(previewA));
+          tool.busy = true;
+          root.busyChanged();
+          assert.equal(root.preview, null);
+          assert.equal(root.selectedCopy, '');
+          tool.busy = false;
+          root.busyChanged();
+          assert.equal(readProc.command[2], 'saves-list');
+        """)
+
+    def test_a_listing_without_the_selected_copy_clears_the_preview(self):
+        self.run_page("""
+          root.viewCopy(copyA);
+          finishActive(JSON.stringify(previewA));
+          root.requestRead(['saves-list']);
+          finishActive(JSON.stringify({prefixExists: true, groups: [], copies: [{name: copyB}]}));
+          assert.equal(root.preview, null);
+          assert.equal(root.selectedCopy, '');
+          root.loadData();
+          assert.deepEqual(mutations, []);
         """)
 
     def test_sizes_and_areas(self):

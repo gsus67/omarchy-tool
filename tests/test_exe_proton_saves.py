@@ -1,5 +1,6 @@
 """Proton save copies: inventory, archive safety, saving and loading, all in a temporary prefix."""
 import importlib.util
+from compression import zstd
 from datetime import datetime
 import io
 import json
@@ -615,11 +616,112 @@ class ChosenFolderAndAutomatic(ProtonSaves):
         safety = self.copies / "antes-de-cargar-20200101-000000.tar.zst"
         manual.write_bytes(b"x")
         safety.write_bytes(b"x")
-        saves.prune_automatic(self.copies)
+        saves.prune_automatic(self.copies, "automatica-20261030-080700.tar.zst")
         self.assertEqual(sorted(path.name for path in self.copies.glob("automatica-*")),
                          [f"automatica-20261030-08{minute:02d}00.tar.zst" for minute in range(3, 8)])
         self.assertTrue(manual.exists())
         self.assertTrue(safety.exists())
+
+
+class ReviewFindings(ArchiveSafety):
+    def corrupt_second_header(self, name):
+        """Recompress the copy with a bad checksum in its second member's header."""
+        path = self.copies / name
+        raw = bytearray(zstd.decompress(path.read_bytes()))
+        second = 512 + 512  # First member: one header block, one data block.
+        raw[second + 148:second + 156] = b"0000000\0"
+        path.write_bytes(zstd.compress(bytes(raw)))
+
+    def test_bad_header_after_valid_members_is_not_read_as_the_end(self):
+        name = self.make_copy([regular("Saved Games/Game/a", b"first"), regular("Saved Games/Game/b", b"second")])
+        self.corrupt_second_header(name)
+        self.assert_refused(name)
+        self.put("Saved Games/Game/a", b"current")
+        prefix_before, copies_before = self.tree(self.prefix), self.tree(self.copies)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assertEqual(self.tree(self.prefix), prefix_before)
+        self.assertEqual(self.tree(self.copies), copies_before)
+
+    def test_missing_end_of_archive_is_rejected(self):
+        name = self.make_copy([regular("Saved Games/Game/a", b"first")])
+        path = self.copies / name
+        raw = zstd.decompress(path.read_bytes())
+        path.write_bytes(zstd.compress(raw[:1024]))
+        self.assert_refused(name)
+
+    def test_saved_copy_with_a_cut_trailer_is_rejected(self):
+        self.put("Saved Games/Game/slot", b"x" * 4096)
+        name = saves.save_copy()["name"]
+        path = self.copies / name
+        self.assertEqual(saves.preview_copy(name)["name"], name)
+        path.write_bytes(path.read_bytes()[:-2])
+        self.assert_refused(name)
+
+    def test_linked_folders_above_the_user_directory_are_refused(self):
+        outside = self.root / "outside-users"
+        (outside / "steamuser/Documents/Game").mkdir(parents=True)
+        victim = outside / "steamuser/Documents/Game/slot"
+        victim.write_bytes(b"outside")
+        name = self.make_copy([regular("Documents/Game/slot", b"archived")])
+        shutil.rmtree(self.prefix / "drive_c/users")
+        (self.prefix / "drive_c/users").symlink_to(outside)
+        with self.assertRaises(saves.SavesError):
+            saves.scan_prefix(self.prefix)
+        with self.assertRaises(saves.SavesError):
+            saves.save_copy()
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assertEqual(victim.read_bytes(), b"outside")
+
+    def test_retention_never_deletes_the_copy_just_made(self):
+        self.copies.mkdir()
+        future = 4000000000
+        for minute in range(5):
+            path = self.copies / f"automatica-20300101-00{minute:02d}00.tar.zst"
+            path.write_bytes(b"x")
+            os.utime(path, (future + minute, future + minute))
+        new = self.copies / "automatica-20261030-080000.tar.zst"
+        new.write_bytes(b"x")
+        saves.prune_automatic(self.copies, new.name)
+        self.assertTrue(new.exists())
+        self.assertEqual(len(list(self.copies.glob("automatica-*"))), 5)
+
+    def test_choosing_refuses_folders_that_cleanup_deletes(self):
+        for inside in (self.root / "state", self.root / "state/exe-proton", self.root / "config", ROOT / "bin"):
+            with self.subTest(folder=inside):
+                inside.mkdir(parents=True, exist_ok=True)
+                with self.assertRaises(saves.SavesError) as caught:
+                    saves.choose_folder(str(inside))
+                self.assertEqual(caught.exception.source, "esa carpeta se borra al desinstalar; elige otra")
+        self.assertFalse((ROOT / "bin/Partidas Proton").exists())
+
+    def test_folder_on_an_unmounted_fstab_disk_is_not_available(self):
+        disk = self.root / "disco"
+        (disk / "Partidas Proton").mkdir(parents=True)
+        fstab = self.root / "fstab"
+        fstab.write_text(f"# comentario\nUUID=1 / btrfs defaults 0 0\nUUID=2 {disk} ntfs3 rw 0 0\nUUID=3 none swap sw 0 0\n")
+        environment = patch.dict(os.environ, {"OMARCHY_TOOL_PROTON_SAVES_DIR": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
+        config = self.root / "config"
+        config.mkdir()
+        (config / "config.json").write_text(json.dumps(
+            {"modules": {"exe-proton": {"savesFolder": str(disk), "savesAuto": True}}}))
+        self.put("Saved Games/Game/slot")
+        with patch.object(saves, "FSTAB_FILE", fstab):
+            self.assertFalse(saves.list_saves()["folderAvailable"])
+            with self.assertRaises(saves.SavesError):
+                saves.save_copy()
+            with self.assertRaises(saves.SavesError):
+                saves.auto_copy()
+            with self.assertRaises(saves.SavesError) as caught:
+                saves.choose_folder(str(disk))
+            self.assertEqual(caught.exception.source, "ese disco no está montado")
+            self.assertEqual(list((disk / "Partidas Proton").iterdir()), [])
+            with patch.object(saves.os.path, "ismount", return_value=True):
+                self.assertTrue(saves.list_saves()["folderAvailable"])
+                self.assertRegex(saves.save_copy()["name"], r"^partidas-")
 
 
 if __name__ == "__main__":

@@ -214,7 +214,10 @@
     "Ver": "View",
     "Esta copia contiene:": "This copy contains:",
     "Esta copia no contiene archivos.": "This copy has no files.",
-    "Cargar": "Load"
+    "Cargar": "Load",
+    "el prefijo de Proton apunta fuera de su carpeta": "the Proton prefix points outside its folder",
+    "esa carpeta se borra al desinstalar; elige otra": "uninstalling deletes that folder; choose another",
+    "ese disco no está montado": "that disk isn't mounted"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

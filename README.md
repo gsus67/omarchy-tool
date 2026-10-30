@@ -269,8 +269,9 @@ and restores it later. It works with the module off, as long as the prefix exist
 - **With Proton open** (a `wineserver` running), saving and loading are refused.
 - **Where:** `<folder>/Partidas Proton/`, with `~/Documents` as the default folder.
   A chosen folder must exist and be outside the prefix. If its `Partidas Proton`
-  subfolder later goes missing, the copy fails instead of creating it again, so an
-  unmounted disk never fills the system disk. Copies are private (`0700`/`0600`);
+  subfolder later goes missing, or its disk is listed in `/etc/fstab` and isn't
+  mounted, the copy fails instead of writing to the system disk. A folder that
+  uninstalling would delete is refused. Copies are private (`0700`/`0600`);
   disks without Unix permissions, like NTFS, can't enforce that, and a disk shared
   with the Windows VM exposes them there. `AppData` can hold programs' sessions.
 - **Automatic copy at startup:** off until you turn it on. It runs once when the
