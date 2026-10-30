@@ -82,3 +82,44 @@ exe_proton_disable() {
   config_update '.modules["exe-proton"].enabled = false'
   exe_proton_apply
 }
+
+# Copies of the prefix's data. Reads print the helper's JSON for the page;
+# they work with the module off, because switching it off keeps the prefix.
+exe_proton_saves_helper() {
+  python3 "$TOOL_DIR/bin/exe-proton-saves.py" "$@"
+}
+
+exe_proton_saves_list() {
+  exe_proton_saves_helper list
+}
+
+exe_proton_saves_preview() {
+  exe_proton_saves_helper preview "${1:-}"
+}
+
+# The panel may have closed meanwhile, so the outcome always ends in a notification.
+exe_proton_saves_change() {
+  local action=$1 message output
+  shift
+  if output=$(exe_proton_saves_helper "$action" "$@"); then
+    case $action in
+      save) message=$(tool_text 'Partidas y datos guardados.') ;;
+      load) message=$(tool_text 'Partidas y datos cargados. Se conservó una copia previa.') ;;
+    esac
+    operation_notice normal "$message"
+    return 0
+  fi
+  message=$(jq -r '.error // empty' <<<"$output" 2>/dev/null || true)
+  message=$(tool_text "${message:-no se pudo completar la copia}")
+  operation_notice critical "$message"
+  fail "$message"
+}
+
+exe_proton_saves_save() {
+  exe_proton_saves_change save
+}
+
+exe_proton_saves_load() {
+  [[ -n ${1:-} ]] || fail "$(tool_text 'falta el nombre de la copia')"
+  exe_proton_saves_change load "$1"
+}

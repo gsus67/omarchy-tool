@@ -206,3 +206,43 @@ check "exe-proton copied uninstaller restores MIME and removes state but never s
 check "exe-proton uninstall is idempotent without privilege" 'OMARCHY_TOOL_PRIV=false bash "$repo/bin/uninstall.sh" "$work/missing-plugin"'
 cp "$work/icons-pacman" "$work/quiet-bin/pacman"
 export OMARCHY_TOOL_PRIV=""
+
+# --- Proton save copies: same throwaway home, default prefix and folder.
+export OMARCHY_TOOL_WINESERVER_PID=""
+saves_user="$HOME/.local/share/umu/default/drive_c/users/steamuser"
+saves_dir="$HOME/Documents/Partidas Proton"
+mkdir -p "$saves_user/Saved Games/Mi Juego"
+printf 'partida' >"$saves_user/Saved Games/Mi Juego/slot.sav"
+check "saves listing works while the Proton module is off" '"$tool" exe-proton saves-list >"$work/saves-list.json" && jq -e ".prefixExists and .groups == [{name:\"Mi Juego\",area:\"Saved Games\",bytes:7}] and .copies == []" "$work/saves-list.json" >/dev/null'
+: >"$work/notify-all.log"
+check "save asks for no password and sends one completion notification" 'priv_before=$(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") && OMARCHY_TOOL_PRIV=false "$tool" exe-proton saves-save && [[ $(wc -l <"$OMARCHY_TOOL_TEST_PRIV_LOG") == "$priv_before" && $(wc -l <"$work/notify-all.log") == 1 ]] && grep -qF "Partidas y datos guardados." "$work/notify-all.log"'
+saves_name=$(find "$saves_dir" -name 'partidas-*' -printf '%f\n')
+check "preview lists what a copy contains" '[[ $("$tool" exe-proton saves-preview "$saves_name" | jq -r ".groups[0].name") == "Mi Juego" ]]'
+check "open Proton refuses save with the reason and a notification" '! OMARCHY_TOOL_WINESERVER_PID=4242 "$tool" exe-proton saves-save 2>"$work/saves-error" && grep -qF "cierra Proton antes de guardar o cargar" "$work/saves-error" && grep -qF "cierra Proton antes de guardar o cargar" "$work/notify-all.log"'
+printf 'nueva' >"$saves_user/Saved Games/Mi Juego/slot.sav"
+: >"$work/notify-all.log"
+check "load restores the copy and says a previous copy was kept" '"$tool" exe-proton saves-load "$saves_name" && [[ $(<"$saves_user/Saved Games/Mi Juego/slot.sav") == partida ]] && [[ -n $(find "$saves_dir" -name "antes-de-cargar-*") ]] && grep -qF "Partidas y datos cargados. Se conservó una copia previa." "$work/notify-all.log"'
+check "bad copy name fails with a reason and changes nothing" '! "$tool" exe-proton saves-load "../x" 2>"$work/saves-error" && grep -qF "nombre de copia no válido" "$work/saves-error"'
+check "status keeps its lightweight Proton shape" '"$tool" status | jq -e ".modules[\"exe-proton\"] | keys == [\"applied\",\"enabled\",\"summary\"]" >/dev/null'
+check "explicit WINEPREFIX selects another prefix" 'mkdir -p "$work/other-prefix/drive_c/users/steamuser/Documents/Otro" && printf x >"$work/other-prefix/drive_c/users/steamuser/Documents/Otro/a" && [[ $(WINEPREFIX="$work/other-prefix" "$tool" exe-proton saves-list | jq -r ".groups[0].name") == Otro ]]'
+
+# While a change holds the lock: reads go on, changes wait.
+mkfifo "$work/release-lock"
+flock "$XDG_RUNTIME_DIR/omarchy-tool.lock" bash -c 'touch "$1"; read -r _ <"$2"' _ "$work/lock-held" "$work/release-lock" &
+lock_holder=$!
+until [[ -e $work/lock-held ]]; do sleep 0.05; done
+check "listing does not wait for the lock" 'timeout 5 "$tool" exe-proton saves-list >/dev/null'
+check "preview does not wait for the lock" 'timeout 5 "$tool" exe-proton saves-preview "$saves_name" >/dev/null'
+check "saving waits for the lock" 'timeout 0.5 "$tool" exe-proton saves-save; [[ $? == 124 ]]'
+check "loading waits for the lock" 'timeout 0.5 "$tool" exe-proton saves-load "$saves_name"; [[ $? == 124 ]]'
+printf '\n' >"$work/release-lock"
+wait "$lock_holder"
+
+# Neither switching off nor uninstalling touches a copy.
+saves_sum=$(find "$saves_dir" -type f -exec md5sum {} + | sort)
+"$tool" exe-proton enable
+"$tool" exe-proton disable
+check "disabling keeps every copy" '[[ $(find "$saves_dir" -type f -exec md5sum {} + | sort) == "$saves_sum" ]]'
+"$tool" apply
+bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
+check "uninstalling keeps every copy" '[[ $(find "$saves_dir" -type f -exec md5sum {} + | sort) == "$saves_sum" ]]'

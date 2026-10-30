@@ -186,7 +186,11 @@
     "todavía no existe el prefijo de Proton; abre antes un programa con Proton": "the Proton prefix doesn't exist yet; open a program with Proton first",
     "la copia no encaja con lo que hay en el prefijo": "the copy doesn't fit what's in the prefix",
     "no se pudo preparar la carga; no cambió nada": "could not prepare the load; nothing changed",
-    "la carga quedó incompleta; se conservó la copia previa": "the load is incomplete; the previous copy was kept"
+    "la carga quedó incompleta; se conservó la copia previa": "the load is incomplete; the previous copy was kept",
+    "Partidas y datos guardados.": "Saves and data stored.",
+    "Partidas y datos cargados. Se conservó una copia previa.": "Saves and data loaded. A previous copy was kept.",
+    "no se pudo completar la copia": "could not complete the copy",
+    "falta el nombre de la copia": "missing copy name"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
