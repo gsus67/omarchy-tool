@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.gsus67.omarchy-tool",
   "name": "Omarchy Tool",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "author": "Omarchy Tool contributors",
   "license": "MIT",
   "description": "Toolbox for Omarchy: a bar panel with switchable system tweaks. Share disks and pass USB devices to Omarchy's Windows VM, enable WebHID for browser device configurators, and turn installed plugins on and off.",
