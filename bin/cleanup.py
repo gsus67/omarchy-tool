@@ -2,19 +2,29 @@
 """What the Limpieza page can clean, and cleaning what needs no password.
 
 Usage: cleanup.py list | validate-cache NAMES_JSON | clean tmp | clean cache NAMES_JSON
+       cleanup.py prepare CATEGORY REVISION | finish < PLAN_JSON
+The commands that need a password run in bin/modules/cleanup.sh: prepare says what
+they would remove, finish measures what they did. Nothing here runs as root.
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
 import errno
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import stat
+import subprocess
 import sys
 import time
 
 MINIMUM_AGE = 86400
 GROUP_BELOW = 100 * 1024 * 1024
+JOURNAL_LIMIT = 50 * 1024 * 1024
+PACKAGE_NAME = re.compile(r"[a-z0-9@_+][a-z0-9@._+-]*")
+PACKAGE_FILE = re.compile(r"/.*\.pkg\.tar(\.[a-z0-9]+)?(\.sig)?")
 DELETED_SUFFIX = " (deleted)"
 
 ERROR_ACTION = "acción de limpieza no válida"
@@ -42,8 +52,19 @@ CACHE_SUMMARIES = {
     "yay": "Paquetes compilados de AUR; se recompilan si se reinstalan.",
     "thumbnails": "Miniaturas de archivos; se crean otra vez al abrir carpetas.",
 }
+ERROR_TOOL = "no se pudo revisar esta categoría"
+ERROR_PACKAGE = "hay un nombre de paquete no válido"
+ERROR_CHANGED = "los paquetes huérfanos cambiaron; vuelve a revisarlos"
+SYSTEM = {
+    "paccache": ("Paquetes de pacman", "Instaladores antiguos. Se conservan 3 versiones de cada paquete.", ""),
+    "orphans": ("Paquetes huérfanos", "Paquetes que ya nada necesita. Se quitan con las dependencias que solo ellos usan.", ""),
+    "coredumps": ("Volcados de fallos", "Copias de programas que fallaron, guardadas para diagnosticarlos.",
+                  "Se pierde la información para diagnosticar esos fallos."),
+    "journal": ("Journal", "Registros del sistema. Se recortan a 50 MB, borrando primero lo más antiguo.", ""),
+}
 CATALOG_SOURCES = [ERROR_ACTION, ERROR_GENERIC, ERROR_TEMP, TEMP_TITLE, TEMP_SUMMARY, ERROR_CACHE, CACHE_TITLE,
-                   CACHE_SUMMARY, OTHER_TITLE, OTHER_SUMMARY, CACHE_FALLBACK, *CACHE_SUMMARIES.values()]
+                   CACHE_SUMMARY, OTHER_TITLE, OTHER_SUMMARY, CACHE_FALLBACK, *CACHE_SUMMARIES.values(), ERROR_TOOL,
+                   ERROR_PACKAGE, ERROR_CHANGED, *(text for entry in SYSTEM.values() for text in entry if text)]
 
 
 class CleanupError(Exception):
@@ -370,8 +391,182 @@ def clean_cache(names):
     return result
 
 
+def file_bytes(_path, status):
+    return blocks(status)
+
+
+def run_tool(*arguments, allowed=(0,)):
+    """A read-only system command, with its output in English so it can be parsed."""
+    binary = shutil.which(arguments[0])
+    if binary is None:
+        raise CleanupError(ERROR_TOOL)
+    try:
+        done = subprocess.run([binary, *arguments[1:]], capture_output=True, text=True, timeout=120, check=False,  # noqa: S603 - fixed commands, validated names
+                              errors="surrogateescape", env={**os.environ, "LC_ALL": "C"})
+    except (OSError, subprocess.SubprocessError) as error:
+        raise CleanupError(ERROR_TOOL) from error
+    if done.returncode not in allowed:
+        raise CleanupError(ERROR_TOOL)
+    return done
+
+
+def snapshot(paths):
+    """What each regular file is now, once per inode; links and special files don't count."""
+    entries, seen = [], set()
+    for path in paths:
+        try:
+            status = os.lstat(path)
+        except OSError:
+            continue
+        identity = (status.st_dev, status.st_ino)
+        if stat.S_ISREG(status.st_mode) and identity not in seen:
+            seen.add(identity)
+            entries.append({"path": str(path), "dev": status.st_dev, "ino": status.st_ino,
+                            "bytes": file_bytes(path, status)})
+    return entries
+
+
+def new_plan(identifier, entries, count, candidates=None, packages=None, names=None, revision=""):
+    return {"id": identifier, "bytes": sum(entry["bytes"] for entry in entries), "count": count,
+            "packages": packages or [], "names": names or [], "revision": revision, "entries": entries,
+            "candidates": candidates or []}
+
+
+def paccache_plan():
+    output = run_tool("paccache", "-d", "-k3", "-vv", "--nocolor")
+    paths = []
+    for line in (output.stdout + output.stderr).splitlines():
+        if not line or line.startswith("==> "):
+            continue
+        if not PACKAGE_FILE.fullmatch(line):
+            raise CleanupError(ERROR_TOOL)
+        paths.append(line)
+    entries = snapshot(paths)
+    kept = [entry["path"] for entry in entries]
+    return new_plan("paccache", entries, sum(not path.endswith(".sig") for path in kept), candidates=kept)
+
+
+def package_names(lines):
+    names = [line for line in lines if line]
+    if not all(PACKAGE_NAME.fullmatch(name) for name in names):
+        raise CleanupError(ERROR_PACKAGE)
+    return names
+
+
+def orphans_plan(expected_revision):
+    query = run_tool("pacman", "-Qdtq", allowed=(0, 1))
+    if query.returncode == 1 and query.stderr.strip():
+        raise CleanupError(ERROR_TOOL)
+    seeds = package_names(query.stdout.splitlines())
+    if not seeds:
+        if expected_revision:
+            raise CleanupError(ERROR_CHANGED)
+        return new_plan("orphans", [], 0)
+    names = package_names(run_tool("pacman", "-Rs", "--print", "--print-format", "%n", *seeds).stdout.splitlines())
+    revision = hashlib.sha256(json.dumps([sorted(seeds), sorted(names)]).encode()).hexdigest()
+    if expected_revision and expected_revision != revision:
+        raise CleanupError(ERROR_CHANGED)
+    files = run_tool("pacman", "-Qlq", "--", *names).stdout.splitlines()
+    return new_plan("orphans", snapshot(files), len(names), packages=seeds, names=names, revision=revision)
+
+
+def coredumps_plan():
+    folder = locations()["coredumps"]
+    try:
+        with os.scandir(folder) as listing:
+            paths = sorted(entry.path for entry in listing)
+    except OSError:
+        paths = []
+    entries = snapshot(paths)
+    kept = [entry["path"] for entry in entries]
+    return new_plan("coredumps", entries, len(kept), candidates=kept)
+
+
+def journal_plan():
+    """Whole files, oldest first, until each machine's folder is under the limit.
+
+    --rotate closes the active files first, so they can go too.
+    """
+    places = locations()
+    entries = []
+    for root in (places["journal"], places["runtime-journal"]):
+        try:
+            with os.scandir(root) as listing:
+                machines = [entry.path for entry in listing if entry.is_dir(follow_symlinks=False)]
+        except OSError:
+            continue
+        for machine in machines:
+            try:
+                with os.scandir(machine) as listing:
+                    files = [entry.path for entry in listing if entry.name.endswith((".journal", ".journal~"))]
+            except OSError:
+                continue
+            current = snapshot(files)
+            current.sort(key=lambda entry: os.lstat(entry["path"]).st_mtime)
+            excess = sum(entry["bytes"] for entry in current) - JOURNAL_LIMIT
+            for entry in current:
+                if excess <= 0:
+                    break
+                entries.append(entry)
+                excess -= entry["bytes"]
+    return new_plan("journal", entries, len(entries))
+
+
+def system_plan(identifier, expected_revision=""):
+    if identifier == "paccache":
+        return paccache_plan()
+    if identifier == "orphans":
+        return orphans_plan(expected_revision)
+    if identifier == "coredumps":
+        return coredumps_plan()
+    if identifier == "journal":
+        return journal_plan()
+    raise CleanupError(ERROR_ACTION)
+
+
+def scan_system(identifier):
+    """The row for a system category; one that can't be checked or is empty isn't shown."""
+    try:
+        plan = system_plan(identifier)
+    except CleanupError:
+        return None
+    if not plan["count"]:
+        return None
+    title, summary, warning = SYSTEM[identifier]
+    return category(identifier, title, summary, plan["bytes"], plan["count"], warning=warning, password=True,
+                    names=plan["names"], revision=plan["revision"])
+
+
+def finish_system(plan):
+    """Measure what a privileged command really did against what was there before."""
+    freed = 0
+    for entry in plan["entries"]:
+        try:
+            status = os.lstat(entry["path"])
+        except FileNotFoundError:
+            freed += entry["bytes"]
+            continue
+        if (status.st_dev, status.st_ino) != (entry["dev"], entry["ino"]):
+            freed += entry["bytes"]
+        else:
+            freed += max(0, entry["bytes"] - file_bytes(entry["path"], status))
+    remaining = sum(os.path.lexists(path) for path in plan["candidates"])
+    return {"freedBytes": freed, "skippedCount": remaining, "skippedNames": []}
+
+
+def read_plan(text):
+    try:
+        plan = json.loads(text)
+        for entry in plan["entries"]:
+            entry["path"], entry["dev"], entry["ino"], entry["bytes"]  # noqa: B018 - shape check
+        plan["candidates"]  # noqa: B018 - shape check
+    except (ValueError, KeyError, TypeError) as error:
+        raise CleanupError(ERROR_ACTION) from error
+    return plan
+
+
 def list_categories():
-    found = [scan_temp(), scan_cache()]
+    found = [scan_temp(), scan_cache(), *map(scan_system, SYSTEM)]
     return {"categories": [item for item in found if item]}
 
 
@@ -385,6 +580,10 @@ def main(argv):
             result = {"names": cache_names(argv[1])}
         elif len(argv) == 3 and argv[:2] == ["clean", "cache"]:
             result = clean_cache(cache_names(argv[2]))
+        elif len(argv) in (2, 3) and argv[0] == "prepare":
+            result = system_plan(argv[1], argv[2] if len(argv) == 3 else "")
+        elif argv == ["finish"]:
+            result = finish_system(read_plan(sys.stdin.read()))
         else:
             raise CleanupError(ERROR_ACTION)
     except CleanupError as error:

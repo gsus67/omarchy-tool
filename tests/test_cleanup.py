@@ -478,6 +478,197 @@ class Cache(CleanupCase):
         self.assertFalse(folder.exists())
 
 
+class System(CleanupCase):
+    MB = 1024 * 1024
+
+    def setUp(self):
+        super().setUp()
+        self.privilege_log = self.root / "privilege.log"
+        for name in ("pkexec", "sudo"):
+            self.tool(name, f'echo "$*" >>"{self.privilege_log}"')
+
+    def tool(self, name, body):
+        path = self.bin / name
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(0o700)
+
+    def paccache(self, *paths):
+        lines = ["==> Candidate packages:", *map(str, paths), "",
+                 f"==> finished dry run: {len(paths)} candidates (disk space saved: 1 MiB)"]
+        output = self.root / "paccache.out"
+        output.write_text("\n".join(lines) + "\n")
+        self.tool("paccache", f'[ "$*" = "-d -k3 -vv --nocolor" ] || exit 9; /usr/bin/cat "{output}"')
+
+    def pacman(self, seeds, transaction=None, files=None, seed_status=0):
+        transaction = seeds if transaction is None else transaction
+        seed_output = "\n".join(seeds)
+        trans_output = "\n".join(transaction)
+        file_output = "\n".join(map(str, files or []))
+        self.tool("pacman", f"""case "$1" in
+  -Qdtq) printf '%s\\n' "{seed_output}"; exit {seed_status} ;;
+  -Rs) shift 3; printf '%s\\n' "{trans_output}" ;;
+  -Qlq) printf '%s\\n' "{file_output}" ;;
+  *) exit 9 ;;
+esac""")
+
+    def sized(self, **sizes):
+        real = cleanup.file_bytes
+
+        def fake(path, status):
+            return sizes.get(os.path.basename(path).replace("-", "_").replace(".", "_"), real(path, status))
+
+        return patch.object(cleanup, "file_bytes", side_effect=fake)
+
+    def test_listing_needs_no_privilege_and_keeps_the_order(self):
+        self.write(self.temp / "old")
+        self.write(self.cache / "uv/data")
+        package = self.write(self.root / "pkg/a-1-x86_64.pkg.tar.zst")
+        self.paccache(package)
+        self.pacman(["orphan"], files=[self.write(self.root / "usr/orphan")])
+        self.write(self.core / "core.1")
+        self.write(self.journal / "machine/system.journal", b"x" * 8192)
+        with patch.object(cleanup.time, "time", return_value=self.now), self.sized(system_journal=60 * self.MB):
+            categories = cleanup.list_categories()["categories"]
+        self.assertEqual([item["id"] for item in categories], ["tmp", "cache", "paccache", "orphans", "coredumps", "journal"])
+        self.assertFalse(self.privilege_log.exists())
+        for item in categories:
+            self.assertNotIn("entries", item)
+            self.assertNotIn("candidates", item)
+
+    def test_paccache_missing_or_with_nothing_to_remove_is_omitted(self):
+        self.assertIsNone(cleanup.scan_system("paccache"))
+        self.tool("paccache", "echo '==> no candidate packages found for pruning'")
+        self.assertIsNone(cleanup.scan_system("paccache"))
+
+    def test_paccache_counts_packages_apart_from_signatures_and_paths_with_spaces(self):
+        package = self.write(self.root / "pkg dir/a-1-x86_64.pkg.tar.zst")
+        signature = self.write(self.root / "pkg dir/a-1-x86_64.pkg.tar.zst.sig")
+        self.paccache(package, signature)
+        plan = cleanup.system_plan("paccache")
+        self.assertEqual(plan["count"], 1)
+        self.assertEqual(plan["candidates"], [str(package), str(signature)])
+        self.assertEqual(plan["bytes"], cleanup.allocated_bytes(package) + cleanup.allocated_bytes(signature))
+
+    def test_unexpected_paccache_output_is_refused(self):
+        self.tool("paccache", "echo 'something new here'; echo '/not/a/package'")
+        with self.assertRaises(cleanup.CleanupError):
+            cleanup.system_plan("paccache")
+        self.assertIsNone(cleanup.scan_system("paccache"))
+
+    def test_a_linked_package_is_not_counted(self):
+        package = self.write(self.root / "pkg/a-1-x86_64.pkg.tar.zst")
+        link = self.root / "pkg/b-1-x86_64.pkg.tar.zst"
+        link.symlink_to(package)
+        self.paccache(package, link)
+        plan = cleanup.system_plan("paccache")
+        self.assertEqual([entry["path"] for entry in plan["entries"]], [str(package)])
+
+    def test_orphan_preview_includes_what_goes_with_it(self):
+        one = self.write(self.root / "usr/one", b"x" * 8192)
+        two = self.write(self.root / "usr/two", b"x" * 8192)
+        os.link(one, self.root / "usr/same-inode")
+        self.pacman(["orphan-app"], ["orphan-app", "unused-library"], [one, two, self.root / "usr/same-inode", self.root / "usr"])
+        plan = cleanup.system_plan("orphans")
+        self.assertEqual(plan["packages"], ["orphan-app"])
+        self.assertEqual(plan["names"], ["orphan-app", "unused-library"])
+        self.assertEqual(plan["count"], 2)
+        self.assertEqual(plan["bytes"], cleanup.allocated_bytes(one) + cleanup.allocated_bytes(two))
+        self.assertTrue(plan["revision"])
+
+    def test_no_orphans_is_not_an_error(self):
+        self.tool("pacman", "exit 1")
+        self.assertIsNone(cleanup.scan_system("orphans"))
+
+    def test_a_pacman_failure_is_an_error_but_hides_the_row(self):
+        self.tool("pacman", "echo 'error: broken database' >&2; exit 1")
+        with self.assertRaises(cleanup.CleanupError):
+            cleanup.system_plan("orphans")
+        self.assertIsNone(cleanup.scan_system("orphans"))
+
+    def test_one_invalid_package_refuses_the_whole_plan(self):
+        for name in ("--root", "bad name", "../bad", "Upper", "$(touch bad)"):
+            with self.subTest(seed=name):
+                self.pacman(["good", name.replace("$", "\\\\$")], ["good"])
+                with self.assertRaises(cleanup.CleanupError):
+                    cleanup.system_plan("orphans")
+            with self.subTest(transaction=name):
+                self.pacman(["good"], ["good", name.replace("$", "\\\\$")])
+                with self.assertRaises(cleanup.CleanupError):
+                    cleanup.system_plan("orphans")
+        self.assertFalse((self.root / "bad").exists())
+        self.assertFalse(self.privilege_log.exists())
+
+    def test_a_changed_transaction_is_refused(self):
+        self.pacman(["a"], ["a", "b"])
+        revision = cleanup.system_plan("orphans")["revision"]
+        self.assertEqual(cleanup.system_plan("orphans", revision)["revision"], revision)
+        self.pacman(["a"], ["a", "b", "c"])
+        with self.assertRaises(cleanup.CleanupError) as caught:
+            cleanup.system_plan("orphans", revision)
+        self.assertEqual(caught.exception.source, "los paquetes huérfanos cambiaron; vuelve a revisarlos")
+
+    def test_coredumps_are_only_direct_regular_files(self):
+        core = self.write(self.core / "core.1")
+        self.write(self.core / "folder/inner")
+        (self.core / "link").symlink_to(core)
+        plan = cleanup.system_plan("coredumps")
+        self.assertEqual(plan["candidates"], [str(core)])
+        self.assertEqual(plan["bytes"], cleanup.allocated_bytes(core))
+        self.assertTrue(cleanup.scan_system("coredumps")["warning"])
+
+    def test_journal_under_the_limit_is_omitted(self):
+        self.write(self.journal / "machine/system.journal")
+        self.assertIsNone(cleanup.scan_system("journal"))
+
+    def journals(self):
+        oldest = self.write(self.journal / "machine/old.journal")
+        middle = self.write(self.journal / "machine/mid.journal")
+        active = self.write(self.journal / "machine/system.journal")
+        os.utime(oldest, (100, 100))
+        os.utime(middle, (200, 200))
+        os.utime(active, (300, 300))
+
+    def test_journal_preview_counts_whole_files_from_the_oldest(self):
+        self.journals()
+        with self.sized(old_journal=30 * self.MB, mid_journal=30 * self.MB, system_journal=self.MB):
+            plan = cleanup.system_plan("journal")
+        self.assertEqual(plan["bytes"], 30 * self.MB)
+
+    def test_journal_with_only_active_files_can_still_be_trimmed(self):
+        self.write(self.journal / "machine/system.journal")
+        self.write(self.journal / "machine/user-1000.journal")
+        with self.sized(system_journal=72 * self.MB, user_1000_journal=72 * self.MB):
+            self.assertEqual(cleanup.system_plan("journal")["bytes"], 144 * self.MB)
+
+    def test_finish_counts_what_went_and_what_stayed(self):
+        kept = self.write(self.core / "kept", b"x" * 8192)
+        gone = self.write(self.core / "gone", b"x" * 8192)
+        plan = cleanup.system_plan("coredumps")
+        expected = cleanup.allocated_bytes(gone)
+        gone.unlink()
+        result = cleanup.finish_system(plan)
+        self.assertEqual(result, {"freedBytes": expected, "skippedCount": 1, "skippedNames": []})
+        self.assertTrue(kept.exists())
+
+    def test_a_replaced_file_counts_as_gone(self):
+        core = self.write(self.core / "core.1", b"x" * 8192)
+        plan = cleanup.system_plan("coredumps")
+        expected = cleanup.allocated_bytes(core)
+        replacement = self.write(self.root / "replacement", b"y")
+        os.replace(replacement, core)
+        self.assertEqual(cleanup.finish_system(plan)["freedBytes"], expected)
+
+    def test_cli_prepares_and_finishes(self):
+        self.write(self.core / "core.1")
+        prepared = self.cli("prepare", "coredumps", "")
+        self.assertEqual(prepared.returncode, 0, prepared.stderr)
+        finished = self.cli("finish", stdin=prepared.stdout)
+        self.assertEqual(finished.returncode, 0, finished.stderr)
+        self.assertEqual(json.loads(finished.stdout)["skippedCount"], 1)
+        self.assertEqual(json.loads(self.cli("prepare", "nope", "").stdout), {"error": "acción de limpieza no válida"})
+        self.assertEqual(json.loads(self.cli("finish", stdin="not json").stdout), {"error": "acción de limpieza no válida"})
+
+
 class Protocol(CleanupCase):
     def test_failure_is_one_json_object(self):
         result = self.cli("unknown")

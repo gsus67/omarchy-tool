@@ -240,7 +240,19 @@
     "Cabeceras de Node; se descargan otra vez al compilar.": "Node headers; downloaded again when compiling.",
     "Descargas de Electron; se bajan otra vez si hacen falta.": "Electron downloads; fetched again if needed.",
     "Paquetes compilados de AUR; se recompilan si se reinstalan.": "Built AUR packages; rebuilt if reinstalled.",
-    "Miniaturas de archivos; se crean otra vez al abrir carpetas.": "File thumbnails; created again when opening folders."
+    "Miniaturas de archivos; se crean otra vez al abrir carpetas.": "File thumbnails; created again when opening folders.",
+    "no se pudo revisar esta categoría": "could not check this category",
+    "hay un nombre de paquete no válido": "a package name isn't valid",
+    "los paquetes huérfanos cambiaron; vuelve a revisarlos": "the orphan packages changed; review them again",
+    "Paquetes de pacman": "Pacman packages",
+    "Instaladores antiguos. Se conservan 3 versiones de cada paquete.": "Old installers. 3 versions of each package are kept.",
+    "Paquetes huérfanos": "Orphan packages",
+    "Paquetes que ya nada necesita. Se quitan con las dependencias que solo ellos usan.": "Packages nothing needs anymore. Removed along with dependencies only they use.",
+    "Volcados de fallos": "Crash dumps",
+    "Copias de programas que fallaron, guardadas para diagnosticarlos.": "Copies of programs that crashed, kept to diagnose them.",
+    "Se pierde la información para diagnosticar esos fallos.": "The information to diagnose those crashes is lost.",
+    "Journal": "Journal",
+    "Registros del sistema. Se recortan a 50 MB, borrando primero lo más antiguo.": "System logs. Trimmed to 50 MB, oldest first."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
