@@ -1,27 +1,33 @@
 #!/bin/bash
 
-# Show or set how the active wired/Wi-Fi connection gets its IPv4 address,
-# the way omarchy-dns does for DNS. The network-ip module copies this file to
-# $STATE_DIR, and the Omarchy menu runs that copy from Setup › Network › IP.
+# Show or set how one wired/Wi-Fi adapter gets its IPv4 address and its DNS,
+# the way omarchy-dns does for every adapter at once. The network-ip module
+# copies this file to $STATE_DIR, and the Omarchy menu runs that copy from
+# Setup › Network › IP and Setup › Network › DNS.
 #
-#   network-ip.sh            Print DHCP or Custom (or another ipv4.method)
-#   network-ip.sh info       JSON with connection, mode, address and gateway
-#   network-ip.sh DHCP       Get address, gateway and DNS from the router again
-#   network-ip.sh DHCP --notify   Same, reporting errors as a desktop notification
-#   network-ip.sh Custom     Ask for address/prefix and gateway, then set them
+#   network-ip.sh list                          JSON: wired/Wi-Fi adapters and their settings
+#   network-ip.sh ip DEVICE                     Print DHCP or Custom
+#   network-ip.sh ip DEVICE DHCP [--notify]     Address and gateway from the router again
+#   network-ip.sh ip DEVICE Custom              Ask for address/prefix and gateway
+#   network-ip.sh dns DEVICE                    Print DHCP, Cloudflare, Google or Custom
+#   network-ip.sh dns DEVICE PROVIDER [--notify]  DHCP, Cloudflare or Google
+#   network-ip.sh dns DEVICE Custom             Ask for the DNS servers
 #
-# Runs as the session user: NetworkManager's polkit rules let a local session
-# modify system connections, so nothing here needs root.
+# --notify reports errors as a desktop notification: the menu runs those rows
+# with no terminal to show them in.
+#
+# Settings belong to the connection active on that adapter; a disconnected
+# adapter has none to change. Runs as the session user: NetworkManager's polkit
+# rules let a local session modify system connections, so nothing needs root.
 
 set -euo pipefail
 
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=bin/i18n.sh
 source "$HERE/i18n.sh"
-# DNS servers this script copied into a connection, so DHCP takes back only those.
+# DNS servers this script copied into a connection when its IP went static,
+# one "uuid servers" line each, so DHCP takes back only those.
 DNS_RECORD="${OMARCHY_TOOL_STATE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-tool}/network-ip.dns"
-
-# The menu's DHCP row runs with no terminal to show errors in.
 NOTIFY=false
 
 die() {
@@ -29,28 +35,39 @@ die() {
   message=$(tool_text "$@")
   printf 'network-ip: %s\n' "$message" >&2
   if [[ $NOTIFY == true ]]; then
-    omarchy-notification-send -u critical "$(tool_text 'IP de red')" "$message" >/dev/null 2>&1 || true
+    omarchy-notification-send -u critical "$(tool_text 'Red')" "$message" >/dev/null 2>&1 || true
   fi
   exit 1
 }
 
-# --- active connection ------------------------------------------------------
+# --- adapters ---------------------------------------------------------------
+
+# Wired and Wi-Fi adapters as "device type state" lines.
+adapters() {
+  local device type state
+  while IFS=: read -r device type state; do
+    case $type in
+      ethernet | wifi) printf '%s %s %s\n' "$device" "$type" "${state%% *}" ;;
+    esac
+  done < <(nmcli -t -f DEVICE,TYPE,STATE device status)
+}
 
 conn_uuid=""
 conn_device=""
 
-find_connection() {
-  local uuid type device
-  while IFS=: read -r uuid type device; do
-    case $type in
-      802-3-ethernet | 802-11-wireless)
-        conn_uuid=$uuid
-        conn_device=$device
-        return 0
-        ;;
-    esac
-  done < <(nmcli -t -f UUID,TYPE,DEVICE connection show --active)
-  die 'no hay ninguna conexión por cable o Wi-Fi activa'
+# Select DEVICE's active connection, or stop with a clear message.
+use_device() {
+  local device=$1 name type state
+  [[ $device =~ ^[A-Za-z0-9_.-]{1,15}$ ]] || die 'adaptador no válido: %1' "$device"
+  while read -r name type state; do
+    [[ $name == "$device" ]] || continue
+    [[ $state == connected ]] || die '%1 no está conectado' "$device"
+    conn_device=$device
+    conn_uuid=$(nmcli -g GENERAL.CON-UUID device show "$device")
+    [[ -n $conn_uuid ]] || die '%1 no está conectado' "$device"
+    return 0
+  done < <(adapters)
+  die 'no hay ningún adaptador de cable o Wi-Fi llamado %1' "$device"
 }
 
 conn_get() {
@@ -64,18 +81,14 @@ device_get() {
   printf '%s' "${value%% | *}"
 }
 
-current_mode() {
-  case $(conn_get ipv4.method) in
-    auto) echo DHCP ;;
-    manual) echo Custom ;;
-    *) conn_get ipv4.method ;;
-  esac
-}
-
 reapply() {
   nmcli device reapply "$conn_device" >/dev/null 2>&1 ||
     nmcli connection up "$conn_uuid" >/dev/null ||
     die 'no se pudo aplicar el cambio a %1' "$conn_device"
+}
+
+modify() {
+  nmcli connection modify "$conn_uuid" "$@" >/dev/null || die 'no se pudo cambiar %1' "$conn_device"
 }
 
 # --- IPv4 validation --------------------------------------------------------
@@ -84,6 +97,13 @@ OCTET='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
 
 valid_ipv4() {
   [[ $1 =~ ^$OCTET\.$OCTET\.$OCTET\.$OCTET$ ]]
+}
+
+# Hex groups and colons only, at most one "::", 2-39 characters.
+valid_ipv6() {
+  [[ $1 =~ ^[0-9A-Fa-f:]{2,39}$ && $1 == *:* && $1 != *:::* ]] || return 1
+  local rest=${1#*::}
+  [[ $rest != *::* ]]
 }
 
 ipv4_to_int() {
@@ -118,53 +138,6 @@ check_custom() {
   fi
 }
 
-# --- DNS kept across manual mode --------------------------------------------
-
-# Manual mode gets no DNS from the router. If the connection has none of its
-# own (omarchy-dns sets them when a provider is chosen), keep the servers in
-# use now so names still resolve, and remember them for DHCP.
-keep_dns_args() {
-  local servers
-  [[ -z $(conn_get ipv4.dns) ]] || return 0
-  servers=$(nmcli -g IP4.DNS device show "$conn_device" | sed 's/ | /,/g')
-  [[ -n $servers ]] && printf '%s\n' ipv4.dns "$servers"
-  return 0
-}
-
-record_dns() {
-  mkdir -p -- "$(dirname -- "$DNS_RECORD")"
-  printf '%s %s\n' "$conn_uuid" "$(conn_get ipv4.dns)" >"$DNS_RECORD"
-}
-
-# Only DNS servers this script copied, and still unchanged since.
-dns_to_release() {
-  local uuid servers
-  [[ -f $DNS_RECORD ]] || return 1
-  read -r uuid servers <"$DNS_RECORD"
-  [[ $uuid == "$conn_uuid" && -n $servers && $(conn_get ipv4.dns) == "$servers" ]]
-}
-
-# --- commands ---------------------------------------------------------------
-
-cmd_info() {
-  find_connection
-  jq -n --arg connection "$(conn_get connection.id)" --arg device "$conn_device" \
-    --arg mode "$(current_mode)" --arg address "$(device_get IP4.ADDRESS)" \
-    --arg gateway "$(device_get IP4.GATEWAY)" \
-    '{connection: $connection, device: $device, mode: $mode, address: $address, gateway: $gateway}'
-}
-
-cmd_dhcp() {
-  local args=(ipv4.method auto ipv4.addresses "" ipv4.gateway "")
-  find_connection
-  if dns_to_release; then
-    args+=(ipv4.dns "")
-  fi
-  nmcli connection modify "$conn_uuid" "${args[@]}" >/dev/null || die 'no se pudo cambiar %1' "$conn_device"
-  rm -f -- "$DNS_RECORD"
-  reapply
-}
-
 # Enter keeps the value shown in brackets. The question goes to stderr: the
 # caller captures stdout as the answer.
 ask() {
@@ -175,39 +148,193 @@ ask() {
     printf '%s: ' "$(tool_text "$prompt")" >&2
   fi
   read -r answer || answer=""
-  answer=${answer//[[:space:]]/}
   printf '%s' "${answer:-$default}"
 }
 
-cmd_custom() {
-  local address gateway dns_args
-  find_connection
-  echo "$(tool_text 'Conexión: %1 (%2)' "$(conn_get connection.id)" "$conn_device")"
+# --- DNS record -------------------------------------------------------------
+
+record_get() {
+  [[ -f $DNS_RECORD ]] && awk -v uuid="$conn_uuid" '$1 == uuid { print $2; exit }' "$DNS_RECORD"
+  return 0
+}
+
+record_set() {
+  local servers=$1 tmp
+  mkdir -p -- "$(dirname -- "$DNS_RECORD")"
+  tmp=$(mktemp "$DNS_RECORD.XXXXXX")
+  { [[ -f $DNS_RECORD ]] && awk -v uuid="$conn_uuid" '$1 != uuid' "$DNS_RECORD"
+    [[ -n $servers ]] && printf '%s %s\n' "$conn_uuid" "$servers"; } >"$tmp" || true
+  if [[ -s $tmp ]]; then
+    mv -f -- "$tmp" "$DNS_RECORD"
+  else
+    rm -f -- "$tmp" "$DNS_RECORD"
+  fi
+}
+
+# --- IP ---------------------------------------------------------------------
+
+ip_mode() {
+  case $(conn_get ipv4.method) in
+    auto) echo DHCP ;;
+    manual) echo Custom ;;
+    *) conn_get ipv4.method ;;
+  esac
+}
+
+ip_dhcp() {
+  local args=(ipv4.method auto ipv4.addresses "" ipv4.gateway "") recorded
+  recorded=$(record_get)
+  # Release only DNS this script copied, and only while still unchanged.
+  if [[ -n $recorded && $(conn_get ipv4.dns) == "$recorded" ]]; then
+    args+=(ipv4.dns "")
+  fi
+  modify "${args[@]}"
+  record_set ""
+  reapply
+}
+
+ip_custom() {
+  local address gateway servers dns_args=()
+  echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
   address=$(ask 'IP/prefijo' "$(device_get IP4.ADDRESS)")
   gateway=$(ask 'Puerta de enlace' "$(device_get IP4.GATEWAY)")
+  address=${address//[[:space:]]/}
+  gateway=${gateway//[[:space:]]/}
   check_custom "$address" "$gateway"
 
-  mapfile -t dns_args < <(keep_dns_args)
-  nmcli connection modify "$conn_uuid" ipv4.method manual ipv4.addresses "$address" \
-    ipv4.gateway "$gateway" "${dns_args[@]}" >/dev/null || die 'no se pudo cambiar %1' "$conn_device"
-  ((${#dns_args[@]})) && record_dns
+  # A static address gets no DNS from the router. Without DNS of its own,
+  # keep the servers in use now so names still resolve.
+  servers=""
+  if [[ -z $(conn_get ipv4.dns) ]]; then
+    servers=$(nmcli -g IP4.DNS device show "$conn_device" | sed 's/ | /,/g')
+    [[ -n $servers ]] && dns_args=(ipv4.dns "$servers")
+  fi
+  modify ipv4.method manual ipv4.addresses "$address" ipv4.gateway "$gateway" "${dns_args[@]}"
+  [[ -n $servers ]] && record_set "$(conn_get ipv4.dns)"
   reapply
   echo "$(tool_text 'IP fija %1 con puerta de enlace %2.' "$address" "$gateway")"
 }
 
+# --- DNS --------------------------------------------------------------------
+
+# omarchy-dns writes a NetworkManager global DNS that overrides every
+# connection's own; per-adapter DNS only applies while it is on DHCP.
+global_dns() {
+  if command -v omarchy-dns >/dev/null; then
+    omarchy-dns 2>/dev/null || echo DHCP
+  else
+    echo DHCP
+  fi
+}
+
+dns_mode() {
+  local servers
+  if [[ $(conn_get ipv4.ignore-auto-dns) != yes ]]; then
+    echo DHCP
+    return
+  fi
+  servers=$(conn_get ipv4.dns)
+  case $servers in
+    1.1.1.1,1.0.0.1) echo Cloudflare ;;
+    8.8.8.8,8.8.4.4) echo Google ;;
+    *) echo Custom ;;
+  esac
+}
+
+# set_dns IPV4_LIST IPV6_LIST, each comma separated; both empty means DHCP.
+set_dns() {
+  local ipv4=$1 ipv6=$2 auto=yes
+  [[ -n $ipv4$ipv6 ]] && auto=no
+  if [[ $auto == yes && $(ip_mode) == Custom ]]; then
+    die 'con IP fija el router no da DNS; elige Cloudflare, Google o Custom'
+  fi
+  modify ipv4.ignore-auto-dns "$([[ $auto == yes ]] && echo no || echo yes)" ipv4.dns "$ipv4" \
+    ipv6.ignore-auto-dns "$([[ $auto == yes ]] && echo no || echo yes)" ipv6.dns "$ipv6"
+  # Chosen DNS are no longer the ones copied for a static IP.
+  record_set ""
+  reapply
+}
+
+dns_custom() {
+  local answer server ipv4="" ipv6=""
+  echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
+  answer=$(ask 'Servidores DNS separados por espacios' "")
+  for server in ${answer//,/ }; do
+    if valid_ipv4 "$server"; then
+      ipv4+="${ipv4:+,}$server"
+    elif valid_ipv6 "$server"; then
+      ipv6+="${ipv6:+,}$server"
+    else
+      die 'servidor DNS no válido: %1' "$server"
+    fi
+  done
+  [[ -n $ipv4$ipv6 ]] || die 'no se indicó ningún servidor DNS'
+  set_dns "$ipv4" "$ipv6"
+  echo "$(tool_text 'DNS de %1: %2' "$conn_device" "${ipv4}${ipv4:+${ipv6:+,}}${ipv6}")"
+}
+
+dns_command() {
+  local provider=$1 global
+  if [[ $provider != "" ]]; then
+    global=$(global_dns)
+    [[ $global == DHCP ]] ||
+      die 'Omarchy usa DNS %1 en todos los adaptadores; ponlo en DHCP para elegir DNS por adaptador' "$global"
+  fi
+  case $provider in
+    "") dns_mode ;;
+    DHCP | dhcp) set_dns "" "" ;;
+    Cloudflare | cloudflare) set_dns "1.1.1.1,1.0.0.1" "2606:4700:4700::1111,2606:4700:4700::1001" ;;
+    Google | google) set_dns "8.8.8.8,8.8.4.4" "2001:4860:4860::8888,2001:4860:4860::8844" ;;
+    Custom | custom) dns_custom ;;
+    *) usage ;;
+  esac
+}
+
+# --- list -------------------------------------------------------------------
+
+cmd_list() {
+  local device type state rows=() row
+  while read -r device type state; do
+    conn_device=$device
+    conn_uuid=""
+    [[ $state == connected ]] && conn_uuid=$(nmcli -g GENERAL.CON-UUID device show "$device")
+    if [[ -n $conn_uuid ]]; then
+      row=$(jq -n --arg device "$device" --arg type "$type" --arg connection "$(conn_get connection.id)" \
+        --arg ip "$(ip_mode)" --arg dns "$(dns_mode)" --arg address "$(device_get IP4.ADDRESS)" \
+        --arg gateway "$(device_get IP4.GATEWAY)" \
+        '{device: $device, type: $type, connected: true, connection: $connection, ip: $ip, dns: $dns, address: $address, gateway: $gateway}')
+    else
+      row=$(jq -n --arg device "$device" --arg type "$type" '{device: $device, type: $type, connected: false}')
+    fi
+    rows+=("$row")
+  done < <(adapters)
+  if ((${#rows[@]})); then
+    printf '%s\n' "${rows[@]}" | jq -s --arg global "$(global_dns)" '{globalDns: $global, adapters: .}'
+  else
+    jq -n --arg global "$(global_dns)" '{globalDns: $global, adapters: []}'
+  fi
+}
+
+usage() {
+  echo "Usage: network-ip.sh list | ip DEVICE [DHCP|Custom] | dns DEVICE [DHCP|Cloudflare|Google|Custom] [--notify]" >&2
+  exit 1
+}
+
 case ${1:-} in
-  "")
-    find_connection
-    current_mode
+  list) cmd_list ;;
+  ip | dns)
+    [[ ${4:-} == --notify ]] && NOTIFY=true
+    use_device "${2:-}"
+    if [[ $1 == ip ]]; then
+      case ${3:-} in
+        "") ip_mode ;;
+        DHCP | dhcp) ip_dhcp ;;
+        Custom | custom) ip_custom ;;
+        *) usage ;;
+      esac
+    else
+      dns_command "${3:-}"
+    fi
     ;;
-  info) cmd_info ;;
-  DHCP | dhcp)
-    [[ ${2:-} == --notify ]] && NOTIFY=true
-    cmd_dhcp
-    ;;
-  Custom | custom) cmd_custom ;;
-  *)
-    echo "Usage: network-ip.sh [info|DHCP|Custom]" >&2
-    exit 1
-    ;;
+  *) usage ;;
 esac

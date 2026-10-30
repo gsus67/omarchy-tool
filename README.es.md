@@ -64,7 +64,7 @@ salvo el prefijo Wine, los registros y los runtimes/cachés gestionados por umu:
 - `~/.config/omarchy-tool/` (configuración) y `~/.local/share/omarchy-tool/`
   (estado y copia del desinstalador)
 - Una entrada en `~/.config/omarchy/extensions/omarchy-menu.jsonc`, más las
-  tres entradas de Setup › Network › IP mientras **IP de red** está activado
+  entradas de IP y DNS por adaptador mientras **Red por adaptador** está activado
 - `~/.config/hypr/omarchy-tool.lua` y una línea protegida en `hyprland.lua`
   (el atajo **SUPER + ALT + U**)
 - Las líneas `/shared2`, `/shared3` y `/dev/bus/usb` en
@@ -241,34 +241,44 @@ manual. El runner respeta `WINEPREFIX`, `GAMEID` y `PROTONPATH`.
 Si quieres borrarlos, elimina tú `~/.local/share/umu/default`.
 Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
-### IP de red
+### Red por adaptador
 
-En **Omarchy › Extras**, añade **IP** al menú de Omarchy en
-**Setup › Network**, junto al **DNS** propio de Omarchy, y funciona igual:
+En **Omarchy › Extras**, permite elegir el adaptador (cable o Wi-Fi) al cambiar
+su IP o sus DNS desde el menú de Omarchy:
 
-- **DHCP** vuelve a recibir la dirección, la puerta de enlace y los DNS del
-  router.
-- **Custom** abre un terminal flotante que pide la dirección con su prefijo
-  (`192.168.1.20/24`) y la puerta de enlace; Enter deja el valor actual que se
-  muestra entre corchetes. Antes se comprueba todo (IPv4 válida, prefijo 1–32,
-  puerta de enlace en la misma red, sin dirección de red ni de broadcast); si
-  algo falla no cambia nada.
+- **Setup › Network › IP** › *adaptador*: **DHCP** vuelve a recibir la dirección
+  y la puerta de enlace del router; **Custom** abre un terminal flotante que
+  pide la dirección con su prefijo (`192.168.1.20/24`) y la puerta de enlace,
+  y Enter deja el valor actual que se muestra entre corchetes.
+- **Setup › Network › DNS** › *adaptador*: **DHCP**, **Cloudflare**, **Google** o
+  **Custom** (servidores separados por espacios, IPv4 o IPv6) solo para ese
+  adaptador. Las cuatro opciones propias de Omarchy siguen encima y valen para
+  todos los adaptadores.
 
-Una ✓ marca el modo actual. Los cambios se aplican a la conexión por cable o
-Wi-Fi activa con `nmcli`, como el usuario de la sesión: NetworkManager ya deja
-que una sesión local cambie las conexiones, así que no pide contraseña ni hay
-que instalar nada. Solo IPv4.
+Hay una entrada por adaptador de cable o Wi-Fi, visible solo mientras está
+conectado: los ajustes son de la conexión activa en él (en Wi-Fi, la red a la
+que estás conectado). Una ✓ marca lo elegido. Antes se comprueba todo (IPv4
+válida, prefijo 1–32, puerta de enlace en la misma red, sin dirección de red
+ni de broadcast, servidores DNS válidos); si algo falla no cambia nada.
 
-Con una IP fija el router ya no da DNS. Si la conexión no tiene DNS propios (el
-menú **DNS** de Omarchy los pone al elegir un proveedor), **Custom** conserva
-los servidores que se usan en ese momento, y **DHCP** quita después
-exactamente esos, salvo que hayan cambiado entretanto. Los DNS puestos de
-cualquier otra forma no se tocan.
+Los cambios se hacen con `nmcli` como el usuario de la sesión: NetworkManager
+ya deja que una sesión local cambie las conexiones, así que no pide contraseña
+ni hay que instalar nada. Los errores desde el menú salen como notificación.
 
-La página del módulo muestra la conexión activa y, con IP fija, un botón
-**Volver a DHCP**. Desactivar el módulo o desinstalar quita las entradas del
-menú y la copia del script en `~/.local/share/omarchy-tool/`; la red se queda
-con lo último que se eligió.
+La opción de DNS de Omarchy para todos los adaptadores (Cloudflare, Google o
+Custom) es un ajuste global de NetworkManager que manda sobre los de cada
+adaptador, así que los DNS por adaptador se rechazan con un aviso hasta que el
+DNS de Omarchy vuelva a **DHCP**.
+
+Con una IP fija el router ya no da DNS. Si el adaptador no tiene DNS propios,
+la IP **Custom** conserva los servidores que se usan en ese momento, y **DHCP**
+quita después exactamente esos, salvo que hayan cambiado entretanto. Con IP
+fija, los DNS **DHCP** se rechazan porque el router no daría ninguno.
+
+La página del módulo muestra cada adaptador con su IP y sus DNS y, con IP fija,
+un botón **Volver a DHCP**. Desactivar el módulo o desinstalar quita las
+entradas del menú y la copia del script en `~/.local/share/omarchy-tool/`; la
+red se queda con lo último que se eligió.
 
 ### Plugins
 
@@ -303,7 +313,7 @@ omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
 omarchy-tool exe-proton enable|disable
 omarchy-tool network-ip enable|disable
-omarchy-tool network-ip dhcp                     # volver a DHCP
+omarchy-tool network-ip dhcp enp6s0              # adaptador a DHCP
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
