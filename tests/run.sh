@@ -594,6 +594,9 @@ export OMARCHY_TOOL_PRIV=""
 # Extras' Proton module uses the same throwaway session and check helpers.
 # shellcheck source=tests/exe-proton.sh
 source "$repo/tests/exe-proton.sh"
+# Extras' network IP module, with a fake nmcli.
+# shellcheck source=tests/network-ip.sh
+source "$repo/tests/network-ip.sh"
 
 # self-update from an install under Omarchy's plugin folder: a newer commit
 # on the remote gets pulled through Omarchy's updater; an up-to-date one

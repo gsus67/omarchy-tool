@@ -269,21 +269,27 @@ install_helper_i18n() {
   install -m 0644 -- "$TOOL_DIR/i18n/messages.json" "$STATE_DIR/messages.json"
 }
 
+# Insert rows (one menu entry per line) before the menu file's closing brace.
+# Passed through the environment: awk -v would eat the backslashes in them.
+menu_insert_rows() {
+  local tmp
+  tmp=$(mktemp "$MENU_FILE.XXXXXX")
+  MENU_ROWS=$1 awk '
+    { lines[NR] = $0 }
+    END {
+      last = 0
+      for (i = NR; i > 0; i--) if (lines[i] ~ /^}[[:space:]]*$/) { last = i; break }
+      for (i = 1; i <= NR; i++) { if (i == last) print ENVIRON["MENU_ROWS"]; print lines[i] }
+    }
+  ' "$MENU_FILE" >"$tmp" && mv -f -- "$tmp" "$MENU_FILE"
+}
+
 # One row in the Omarchy menu that toggles the panel. Only an existing user
 # menu file is touched; uninstall.sh deletes the row by the same id.
 menu_entry_apply() {
   [[ -f $MENU_FILE ]] || return 0
   grep -q '^  "omarchy-tool": {' "$MENU_FILE" && return 0
-  local tmp
-  tmp=$(mktemp "$MENU_FILE.XXXXXX")
-  awk -v row='  "omarchy-tool": {"icon":"󰦬","label":"Omarchy Tool","action":"omarchy-shell omarchy-tool toggle"},' '
-    { lines[NR] = $0 }
-    END {
-      last = 0
-      for (i = NR; i > 0; i--) if (lines[i] ~ /^}[[:space:]]*$/) { last = i; break }
-      for (i = 1; i <= NR; i++) { if (i == last) print row; print lines[i] }
-    }
-  ' "$MENU_FILE" >"$tmp" && mv -f -- "$tmp" "$MENU_FILE"
+  menu_insert_rows '  "omarchy-tool": {"icon":"󰦬","label":"Omarchy Tool","action":"omarchy-shell omarchy-tool toggle"},'
 }
 
 # Fast-forward the installed plugin when its git remote has new commits, via
