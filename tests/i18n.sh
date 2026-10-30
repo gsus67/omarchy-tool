@@ -24,6 +24,14 @@ LC_ALL=C.UTF-8 bash -c 'source "$1/bin/i18n.sh"; [[ $(tool_text "no existe la ca
 env -u LC_ALL LC_MESSAGES=es LANG=en_US.UTF-8 bash -c 'source "$1/bin/i18n.sh"; [[ $(tool_text "unknown command or module: %1" example) == "comando o módulo desconocido: example" ]]' _ "$repo"
 echo 'ok - message locale precedence and literal argument interpolation'
 
+mkdir -p "$work/prefix/drive_c/users/steamuser/Saved Games/Mi Juego"
+printf x >"$work/prefix/drive_c/users/steamuser/Saved Games/Mi Juego/slot"
+export WINEPREFIX="$work/prefix" OMARCHY_TOOL_PROTON_SAVES_DIR="$work/copies" OMARCHY_TOOL_WINESERVER_PID=4242
+[[ $(LC_ALL=C.UTF-8 "$repo/bin/omarchy-tool" exe-proton saves-save 2>&1 >/dev/null) == "omarchy-tool: close Proton before saving or loading" ]]
+[[ $(env -u LC_ALL -u LC_MESSAGES LANG=es_MX.UTF-8 "$repo/bin/omarchy-tool" exe-proton saves-save 2>&1 >/dev/null) == "omarchy-tool: cierra Proton antes de guardar o cargar" ]]
+[[ $(LC_ALL=C.UTF-8 "$repo/bin/omarchy-tool" exe-proton saves-list | jq -r '.groups[0].name') == "Mi Juego" ]]
+echo 'ok - save errors are translated; user folder names are unchanged'
+
 for page in "$repo/ToolPanel.qml" "$repo"/modules/*.qml; do
   /usr/lib/qt6/bin/qmlformat "$page" >/dev/null
 done
