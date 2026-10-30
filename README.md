@@ -73,7 +73,7 @@ for the Wine prefix, diagnostic logs and umu-managed runtimes/caches:
 - `~/.config/omarchy-tool/` (settings) and `~/.local/share/omarchy-tool/`
   (state and the uninstaller copy)
 - An entry in `~/.config/omarchy/extensions/omarchy-menu.jsonc`, plus the
-  three Setup › Network › IP entries while **Network IP** is on
+  per-adapter IP and DNS entries while **Network per adapter** is on
 - `~/.config/hypr/omarchy-tool.lua` and one guarded line in `hyprland.lua`
   (the **SUPER + ALT + U** shortcut)
 - The `/shared2`, `/shared3` and `/dev/bus/usb` lines in
@@ -249,31 +249,40 @@ The runner respects `WINEPREFIX`, `GAMEID` and `PROTONPATH` overrides.
 If you want to erase them, delete `~/.local/share/umu/default` yourself.
 XDG data/cache locations and umu's `UMU_FOLDERS_PATH` are respected.
 
-### Network IP
+### Network per adapter
 
-Under **Omarchy › Extras**, adds **IP** to the Omarchy menu at
-**Setup › Network**, next to Omarchy's own **DNS**, and works the same way:
+Under **Omarchy › Extras**, lets you pick the adapter (Ethernet or Wi-Fi) when
+changing its IP or DNS from the Omarchy menu:
 
-- **DHCP** gets the address, gateway and DNS from the router again.
-- **Custom** opens a floating terminal that asks for the address with its
-  prefix (`192.168.1.20/24`) and the gateway; Enter keeps the current value
-  shown in brackets. Input is checked first (valid IPv4, prefix 1–32, gateway
-  in the same subnet, no network or broadcast address); on any error nothing
-  changes.
+- **Setup › Network › IP** › *adapter*: **DHCP** gets the address and gateway
+  from the router again; **Custom** opens a floating terminal that asks for the
+  address with its prefix (`192.168.1.20/24`) and the gateway, Enter keeping
+  the current value shown in brackets.
+- **Setup › Network › DNS** › *adapter*: **DHCP**, **Cloudflare**, **Google** or
+  **Custom** (servers separated by spaces, IPv4 or IPv6) for that adapter only.
+  Omarchy's own four choices stay above them and still apply to every adapter.
 
-A ✓ marks the current mode. Changes apply to the active wired or Wi-Fi
-connection through `nmcli`, as the session user: NetworkManager already lets
-a local session change connections, so there is no password prompt and
-nothing to install. IPv4 only.
+There is one entry per wired or Wi-Fi adapter, shown only while it is
+connected: settings belong to the connection active on it (for Wi-Fi, the
+network you are on). A ✓ marks the current choice. Input is checked first
+(valid IPv4, prefix 1–32, gateway in the same subnet, no network or broadcast
+address, valid DNS servers); on any error nothing changes.
 
-A static address gets no DNS from the router. If the connection has no DNS of
-its own (Omarchy's **DNS** menu sets them when a provider is chosen), **Custom**
-keeps the servers in use at that moment, and **DHCP** removes exactly those
-later, unless they were changed in between. DNS set any other way is left
-alone.
+Changes go through `nmcli` as the session user: NetworkManager already lets a
+local session change connections, so there is no password prompt and nothing
+to install. Errors from the menu show as a notification.
 
-The module page shows the active connection and, with a static IP, a
-**Back to DHCP** button. Turning the module off or uninstalling removes the
+Omarchy's DNS choice for every adapter (Cloudflare, Google or Custom) is a
+NetworkManager global setting that overrides each adapter's own, so DNS per
+adapter is refused with a message until Omarchy's DNS is back on **DHCP**.
+
+A static address gets no DNS from the router. If the adapter has no DNS of its
+own, **Custom** IP keeps the servers in use at that moment, and **DHCP** removes
+exactly those later, unless they were changed in between. With a static IP,
+**DHCP** DNS is refused, since the router would give none.
+
+The module page lists each adapter with its IP and DNS and, with a static IP,
+a **Back to DHCP** button. Turning the module off or uninstalling removes the
 menu entries and the helper copy in `~/.local/share/omarchy-tool/`; the
 network keeps whatever was last chosen.
 
@@ -309,7 +318,7 @@ omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
 omarchy-tool exe-proton enable|disable
 omarchy-tool network-ip enable|disable
-omarchy-tool network-ip dhcp                     # back to DHCP
+omarchy-tool network-ip dhcp enp6s0              # adapter back to DHCP
 omarchy-tool usb-windows enable|disable
 omarchy-tool usb-windows add 093a:822a            # vendor:product (lsusb)
 omarchy-tool usb-windows remove 093a:822a
