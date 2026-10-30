@@ -597,6 +597,9 @@ source "$repo/tests/exe-proton.sh"
 # Extras' network IP module, with a fake nmcli.
 # shellcheck source=tests/network-ip.sh
 source "$repo/tests/network-ip.sh"
+# Extras' cleanup page, with fake system commands and folders.
+# shellcheck source=tests/cleanup.sh
+source "$repo/tests/cleanup.sh"
 
 # self-update from an install under Omarchy's plugin folder: a newer commit
 # on the remote gets pulled through Omarchy's updater; an up-to-date one

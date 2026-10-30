@@ -281,6 +281,40 @@ Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exist
 
 Desactivar o desinstalar nunca toca una copia.
 
+### Limpieza
+
+Una entrada propia en **Omarchy › Extras**, sin interruptor: nada queda activado ni
+corre en segundo plano. Los tamaños se calculan al abrir la página, como espacio
+real ocupado. Una fila sin nada que limpiar, o cuya herramienta no esté, no se
+muestra. Cada **Limpiar** dice antes qué se va y cuánto, y pide confirmar. Una
+notificación informa de lo liberado y lo omitido.
+
+| Fila | Qué se borra | Qué te protege |
+|---|---|---|
+| Temporales (en RAM) | Tus entradas de `/tmp` | Solo sin nada abierto dentro y sin cambios en 24 horas; los archivos de bloqueo se quedan |
+| Caché de programas | Las carpetas de `~/.cache` que marcaste | Una carpeta en uso, o con un socket o tubería dentro, se omite y se nombra |
+| Paquetes de pacman | `paccache -rk3` | Conserva 3 versiones de cada paquete; pide contraseña |
+| Paquetes huérfanos | `pacman -Rns` de los huérfanos actuales | Lista antes todo lo que se va, dependencias incluidas; pide contraseña |
+| Volcados de fallos | Archivos de `/var/lib/systemd/coredump` | Avisa que se pierde el diagnóstico; pide contraseña |
+| Journal | `journalctl --rotate --vacuum-size=50M` | Borra archivos enteros, desde el más antiguo, hasta quedar bajo 50 MB, lo que puede dejar mucho menos historial; pide contraseña |
+
+**Elegir** abre la caché con un interruptor por programa de 100 MB o más, y **Otras**
+para los menores, cada uno con lo que cuesta borrarlo. Las marcas se recuerdan en tu
+configuración, y una carpeta nueva empieza sin marcar. El **Limpiar** de afuera borra
+lo marcado, y no está disponible si no hay nada marcado. Los archivos sueltos de
+`~/.cache`, como los registros de Proton, se quedan.
+
+«En uso» significa abierto, en ejecución o como carpeta de trabajo de uno de tus
+procesos, o con un disco montado dentro, y un proceso tuyo que no se pueda leer cuenta
+como que usa todo, salvo `systemd` y `(sd-pam)` de tu sesión. Los procesos de otros
+usuarios y los que protege el kernel (un `/proc/<pid>` de root) no se pueden comprobar:
+los temporales tienen las 24 horas como margen, la caché no. Los enlaces nunca se
+siguen y nunca se entra en otro disco. Nada del plugin corre como root: la
+contraseña solo autoriza esos comandos del sistema con argumentos fijos, y los nombres
+de paquetes salen de `pacman` en ese momento, nunca de la página. Limpiar no impide
+que los archivos vuelvan: si un programa sigue dejándolos en `/tmp`, debe arreglarlo
+ese programa.
+
 ### Red por adaptador
 
 En **Omarchy › Extras**, permite elegir el adaptador (cable o Wi-Fi) al cambiar
@@ -358,6 +392,11 @@ omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NOMBRE
 omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto y apaga la copia automática
 omarchy-tool proton-saves enable|disable          # la copia automática; necesita carpeta elegida
+omarchy-tool cleanup list                         # JSON: qué se puede limpiar
+omarchy-tool cleanup cache-mark '["uv"]' on|off
+omarchy-tool cleanup clean tmp|paccache|coredumps|journal
+omarchy-tool cleanup clean cache '["uv"]'         # solo carpetas ya marcadas
+omarchy-tool cleanup clean orphans REVISIÓN       # la revisión de cleanup list
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adaptador a DHCP
 omarchy-tool usb-windows enable|disable
