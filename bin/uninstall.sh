@@ -81,6 +81,7 @@ rm -f -- "${OMARCHY_TOOL_THUMBNAILERS_DIR:-$data_home/thumbnailers}/omarchy-tool
 
 # Proton cleanup is entirely user-side except removal of our own package.
 # The copied script also stops preparation before deleting its inventory.
+# Copies of the prefix's data are the user's: they are never in this inventory.
 if [[ -d $state_dir/exe-proton ]]; then
   bash "$state_dir/exe-proton/cleanup.sh" || exit 1
 fi

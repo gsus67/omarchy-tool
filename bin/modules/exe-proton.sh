@@ -82,3 +82,77 @@ exe_proton_disable() {
   config_update '.modules["exe-proton"].enabled = false'
   exe_proton_apply
 }
+
+# Copies of the prefix's data. Reads print the helper's JSON for the page;
+# they work with the module off, because switching it off keeps the prefix.
+exe_proton_saves_helper() {
+  python3 "$TOOL_DIR/bin/exe-proton-saves.py" "$@"
+}
+
+exe_proton_saves_list() {
+  exe_proton_saves_helper list
+}
+
+exe_proton_saves_preview() {
+  exe_proton_saves_helper preview "${1:-}"
+}
+
+# The panel may have closed meanwhile, so the outcome always ends in a notification.
+exe_proton_saves_change() {
+  local action=$1 message output
+  shift
+  if output=$(exe_proton_saves_helper "$action" "$@"); then
+    case $action in
+      save) message=$(tool_text 'Partidas y datos guardados.') ;;
+      load) message=$(tool_text 'Partidas y datos cargados. Se conservó una copia previa.') ;;
+    esac
+    operation_notice normal "$message"
+    return 0
+  fi
+  message=$(exe_proton_saves_error "$output")
+  operation_notice critical "$message"
+  fail "$message"
+}
+
+# The helper's error, in the user's language.
+exe_proton_saves_error() {
+  local message
+  message=$(jq -r '.error // empty' <<<"$1" 2>/dev/null || true)
+  tool_text "${message:-no se pudo completar la copia}"
+}
+
+exe_proton_saves_save() {
+  exe_proton_saves_change save
+}
+
+exe_proton_saves_load() {
+  [[ -n ${1:-} ]] || fail "$(tool_text 'falta el nombre de la copia')"
+  exe_proton_saves_change load "$1"
+}
+
+# exe-proton saves-folder PATH: "" goes back to the default folder.
+exe_proton_saves_folder() {
+  local output folder
+  output=$(exe_proton_saves_helper folder "${1:-}") || fail "$(exe_proton_saves_error "$output")"
+  folder=$(jq -r .folder <<<"$output")
+  config_update '.modules["exe-proton"].savesFolder = $folder' --arg folder "$folder"
+}
+
+exe_proton_saves_auto() {
+  case ${1:-} in
+    on) config_update '.modules["exe-proton"].savesAuto = true' ;;
+    off) config_update '.modules["exe-proton"].savesAuto = false' ;;
+    *) fail "$(tool_text 'usa on u off')" ;;
+  esac
+}
+
+# Runs once per shell start, from `omarchy-tool apply`. It finishes here, so
+# nothing stays in the background, and it never blocks the rest of the start.
+exe_proton_startup() {
+  local output
+  [[ $(config_get '.modules["exe-proton"].savesAuto // false') == true ]] || return 0
+  if ! output=$(exe_proton_saves_helper auto); then
+    operation_notice critical "$(tool_text 'no se pudo crear la copia automática: %1' "$(exe_proton_saves_error "$output")")"
+  fi
+  return 0
+}

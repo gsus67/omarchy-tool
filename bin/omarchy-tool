@@ -380,6 +380,12 @@ cmd_apply() {
     has_fn "$fn" || continue
     "$fn" || status=1
   done
+  # Only here: apply also runs from switches, startup work must not.
+  for name in $(module_names); do
+    fn=$(module_fn "$name" startup)
+    has_fn "$fn" || continue
+    "$fn" || status=1
+  done
   return "$status"
 }
 
@@ -390,8 +396,10 @@ main() {
   # Changes run one at a time: the panel applies at shell start on every
   # monitor, and a password prompt must never show twice. Later runs then
   # find nothing left to do.
-  case $command in
-    status | modules | version | --version | "" | help | -h | --help | self-update | uninstall) ;;
+  case "$command:${1:-}" in
+    status:* | modules:* | version:* | --version:* | :* | help:* | -h:* | --help:* | self-update:* | uninstall:*) ;;
+    # The Proton page reads these while a long save holds the lock.
+    exe-proton:saves-list | exe-proton:saves-preview) ;;
     *)
       exec 8>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool.lock"
       flock 8
