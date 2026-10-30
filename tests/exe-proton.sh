@@ -238,7 +238,13 @@ wait "$lock_holder"
 
 # The automatic copy: once at startup, nothing left running, nothing while off.
 check "apply makes no automatic copy while off" '"$tool" apply && [[ -z $(find "$saves_dir" -name "automatica-*") ]]'
-check "apply copies once when on, then skips unchanged data" '"$tool" exe-proton saves-auto on && "$tool" apply && "$tool" apply && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == 1 ]]'
+check "the switch stays off without a chosen folder and says why" '! "$tool" proton-saves enable 2>"$work/saves-error" && grep -qF "Primero elige la carpeta" "$work/saves-error" && [[ $("$tool" status | jq -r ".modules[\"proton-saves\"].enabled") == false ]] && [[ $("$tool" exe-proton saves-list | jq -r .auto) == false ]]'
+check "the listing says no folder was chosen yet" '[[ $("$tool" exe-proton saves-list | jq -r .folderChosen) == false ]]'
+"$tool" exe-proton saves-folder "$HOME/Documents"
+check "the listing says a folder was chosen" '[[ $("$tool" exe-proton saves-list | jq -r .folderChosen) == true ]]'
+: >"$work/notify-all.log"
+check "the switch turns on with a chosen folder and says so" '"$tool" proton-saves enable && [[ $("$tool" status | jq -r ".modules[\"proton-saves\"].enabled") == true ]] && grep -qF "Copia automática activada." "$work/notify-all.log"'
+check "apply copies once when on, then skips unchanged data" '"$tool" apply && "$tool" apply && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == 1 ]]'
 printf 'cambio' >"$saves_user/Saved Games/Mi Juego/slot.sav"
 check "enabling and disabling never make the startup copy" '"$tool" exe-proton enable && "$tool" exe-proton disable && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == 1 ]]'
 check "folder action refuses missing paths and the prefix" '! "$tool" exe-proton saves-folder "$work/missing" 2>/dev/null && ! "$tool" exe-proton saves-folder "$saves_user" 2>/dev/null'
@@ -247,9 +253,11 @@ check "folder action stores the chosen folder" '"$tool" exe-proton saves-folder 
 rm -rf "$work/disk with space/Partidas Proton"
 : >"$work/notify-all.log"
 check "unavailable folder notifies without failing apply" '"$tool" apply && grep -qF "no se pudo crear la copia automática" "$work/notify-all.log" && [[ ! -e "$work/disk with space/Partidas Proton" ]]'
-check "empty folder returns to the default" '"$tool" exe-proton saves-folder "" && [[ $("$tool" exe-proton saves-list | jq -r .folder) == "$HOME/Documents" ]]'
-check "automatic copy can be switched off" '"$tool" exe-proton saves-auto off && [[ $("$tool" exe-proton saves-list | jq -r .auto) == false ]]'
-check "automatic switch refuses anything else" '! "$tool" exe-proton saves-auto maybe 2>/dev/null'
+check "emptying the folder returns to the default and turns the switch off" '"$tool" exe-proton saves-folder "" && [[ $("$tool" exe-proton saves-list | jq -r .folder) == "$HOME/Documents" && $("$tool" status | jq -r ".modules[\"proton-saves\"].enabled") == false ]]'
+"$tool" exe-proton saves-folder "$HOME/Documents"
+"$tool" proton-saves enable
+: >"$work/notify-all.log"
+check "the switch turns off, copies stay" '"$tool" proton-saves disable && [[ $("$tool" exe-proton saves-list | jq -r .auto) == false && -n $(find "$saves_dir" -name "automatica-*") ]] && grep -qF "Copia automática desactivada." "$work/notify-all.log"'
 
 # Neither switching off nor uninstalling touches a copy.
 saves_sum=$(find "$saves_dir" -type f -exec md5sum {} + | sort)

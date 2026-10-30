@@ -48,6 +48,7 @@ operation_title() {
     disk-tiles) tool_text 'Discos en mosaicos' ;;
     exe-icons) tool_text 'Iconos de .exe' ;;
     exe-proton) tool_text 'Abrir .exe con Proton' ;;
+    proton-saves) tool_text 'Copias de Proton' ;;
     windows-disks) tool_text 'Discos en Windows' ;;
     usb-windows) tool_text 'Periféricos en Windows' ;;
     web-devices) tool_text 'Periféricos en navegador' ;;
@@ -64,6 +65,12 @@ operation_done() {
   else
     if [[ $OPERATION_MODULE == plugins ]]; then
       message=$(tool_text 'Estado del plugin actualizado.')
+    elif [[ $OPERATION_MODULE == proton-saves ]]; then
+      if [[ $OPERATION_ACTION == disable || $OPERATION_ACTION == off ]]; then
+        message=$(tool_text 'Copia automática desactivada.')
+      else
+        message=$(tool_text 'Copia automática activada.')
+      fi
     elif [[ $OPERATION_ACTION == disable || $OPERATION_ACTION == off ]]; then
       message=$(tool_text '%1 desactivado. Limpieza terminada.' "$OPERATION_TITLE")
     elif [[ $OPERATION_MODULE == disk-tiles ]]; then

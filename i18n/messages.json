@@ -207,7 +207,6 @@
     "No hay nada que guardar.": "There's nothing to save.",
     "Guardar": "Save",
     "Carpeta de copias": "Copies folder",
-    "Copia automática al encender": "Automatic copy at startup",
     "Copias:": "Copies:",
     "Todavía no hay copias.": "No copies yet.",
     "Ver": "View",
@@ -218,7 +217,11 @@
     "esa carpeta se borra al desinstalar; elige otra": "uninstalling deletes that folder; choose another",
     "ese disco no está montado": "that disk isn't mounted",
     "Copias de Proton": "Proton saves",
-    "Guarda y carga lo que los programas de Windows dejan en el prefijo de Proton: partidas, documentos y datos.": "Save and load what Windows programs keep in the Proton prefix: saves, documents and data."
+    "Guarda y carga lo que los programas de Windows dejan en el prefijo de Proton: partidas, documentos y datos.": "Save and load what Windows programs keep in the Proton prefix: saves, documents and data.",
+    "Primero elige la carpeta donde se guardarán las copias: entra en Copias de Proton y pulsa Aplicar.": "First choose the folder for the copies: go into Proton saves and press Apply.",
+    "Copia automática activada.": "Automatic copy turned on.",
+    "Copia automática desactivada.": "Automatic copy turned off.",
+    "Pulsa Aplicar para elegir esta carpeta. Hace falta para activar la copia automática en Extras.": "Press Apply to choose this folder. Turning on the automatic copy in Extras needs it."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

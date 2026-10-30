@@ -5,8 +5,9 @@ import qs.Commons as Commons
 import qs.Ui
 
 // Copies of what Windows programs keep in the Proton prefix: an entry of its own
-// in Extras, with no switch, because it works whether or not double-clicking .exe
-// files is on. The backend is the exe-proton module's saves-* actions. tool.run
+// in Extras, because it works whether or not double-clicking .exe files is on. Its
+// switch there is the automatic copy (bin/modules/proton-saves.sh). The page's
+// backend is the exe-proton module's saves-* actions. tool.run
 // discards output, so the page reads listings with its own Process; changes go
 // through the tool's queue.
 Column {
@@ -129,10 +130,6 @@ Column {
 
   function setFolder(path) {
     if (tool && !tool.busy) change(["saves-folder", path.trim()])
-  }
-
-  function setAuto(on) {
-    if (tool && !tool.busy) change(["saves-auto", on ? "on" : "off"])
   }
 
   function formatBytes(bytes) {
@@ -258,14 +255,15 @@ Column {
       width: parent.width
     }
 
-    Button {
-      text: root.t("Copia automática al encender")
-      bordered: true
-      fontSize: Style.font.bodySmall
-      foreground: root.fg
-      active: root.listing.auto === true
-      enabled: root.canChange
-      onClicked: root.setAuto(root.listing.auto !== true)
+    Text {
+      visible: root.listing.folderChosen === false
+      textFormat: Text.PlainText
+      text: root.t("Pulsa Aplicar para elegir esta carpeta. Hace falta para activar la copia automática en Extras.")
+      color: Qt.darker(root.fg, 1.5)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.Wrap
+      width: parent.width
     }
 
     PanelSeparator { foreground: root.fg }

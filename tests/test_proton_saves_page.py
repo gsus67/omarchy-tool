@@ -9,7 +9,7 @@ from test_operation_feedback import function
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "modules/ProtonSaves.qml").read_text()
 FUNCTIONS = ("requestRead", "pumpRead", "finishRead", "viewCopy", "cancelView", "change", "saveData", "loadData",
-             "formatBytes", "areaLabel", "setFolder", "setAuto", "busyChanged")
+             "formatBytes", "areaLabel", "setFolder", "busyChanged")
 PREAMBLE = """
 const assert = require('node:assert/strict');
 const mutations = [];
@@ -131,7 +131,6 @@ class ProtonSavesPage(unittest.TestCase):
           root.loadData();
           root.saveData();
           root.setFolder('/mnt/datos');
-          root.setAuto(true);
           assert.deepEqual(mutations, []);
         """)
 
@@ -143,13 +142,10 @@ class ProtonSavesPage(unittest.TestCase):
           assert.equal(mutations.length, 1);
         """)
 
-    def test_folder_and_automatic_actions(self):
+    def test_folder_action(self):
         self.run_page("""
           root.setFolder('  /mnt/datos con espacio ');
-          root.setAuto(true);
-          root.setAuto(false);
-          assert.deepEqual(mutations, [['exe-proton', 'saves-folder', '/mnt/datos con espacio'],
-            ['exe-proton', 'saves-auto', 'on'], ['exe-proton', 'saves-auto', 'off']]);
+          assert.deepEqual(mutations, [['exe-proton', 'saves-folder', '/mnt/datos con espacio']]);
         """)
 
     def test_a_copy_cannot_be_opened_while_a_change_runs(self):
@@ -206,10 +202,37 @@ class ProtonSavesPage(unittest.TestCase):
           assert.equal(root.areaLabel('AppData'), 'AppData');
         """)
 
+    def test_the_switch_lives_in_extras_not_on_the_page(self):
+        self.assertNotIn("saves-auto", SOURCE)
+        self.assertNotIn("setAuto", SOURCE)
+
+    def test_the_panel_names_what_the_switch_did(self):
+        panel = (ROOT / "ToolPanel.qml").read_text()
+        functions = "\n".join(function(panel, name) for name in ("completeFeedback", "actionTitle", "moduleStatus"))
+        program = """
+const assert = require('node:assert/strict');
+const Qt = {callLater: () => {}};
+const root = {t: s => s, modules: [{id: 'proton-saves', title: 'Copias de Proton'}], status: {modules: {'proton-saves': {enabled: true, applied: true}}},
+  error: '', feedback: '', busy: true, pendingFeedback: null, pump: () => {}};
+""" + functions + """
+root.pendingFeedback = {args: ['proton-saves', 'enable'], exitCode: 0};
+root.completeFeedback(true);
+assert.equal(root.feedback, 'Copia automática activada.');
+root.pendingFeedback = {args: ['proton-saves', 'disable'], exitCode: 0};
+root.completeFeedback(true);
+assert.equal(root.feedback, 'Copia automática desactivada.');
+root.error = 'Primero elige la carpeta';
+root.pendingFeedback = {args: ['proton-saves', 'enable'], exitCode: 1};
+root.completeFeedback(true);
+assert.equal(root.error, 'Primero elige la carpeta', 'the red notice stays');
+"""
+        result = subprocess.run([shutil.which("node"), "-e", program], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_copies_have_their_own_entry_apart_from_the_proton_switch(self):
         panel = (ROOT / "ToolPanel.qml").read_text()
         self.assertRegex(panel, r'id: "proton-saves", parent: "extras", title: root\.t\("Copias de Proton"\), '
-                                r'source: "modules/ProtonSaves\.qml", switchable: false')
+                                r'source: "modules/ProtonSaves\.qml" \}')
         self.assertNotIn("saves-", (ROOT / "modules/ExeProton.qml").read_text())
 
     def test_a_missing_prefix_is_explained_instead_of_an_empty_page(self):

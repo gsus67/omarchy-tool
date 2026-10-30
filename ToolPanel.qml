@@ -61,7 +61,7 @@ Panel {
     { id: "disk-tiles", parent: "extras", title: root.t("Discos en mosaicos"), source: "modules/DiskTiles.qml" },
     { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
-    { id: "proton-saves", parent: "extras", title: root.t("Copias de Proton"), source: "modules/ProtonSaves.qml", switchable: false },
+    { id: "proton-saves", parent: "extras", title: root.t("Copias de Proton"), source: "modules/ProtonSaves.qml" },
     { id: "network-ip", parent: "extras", title: root.t("Red por adaptador"), source: "modules/NetworkIp.qml" },
     { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
@@ -158,6 +158,8 @@ Panel {
       if (root.error === "") root.error = root.t("Consulta el estado antes de volver a intentarlo.")
     } else if (done.args[0] === "plugins") {
       root.feedback = root.t("Estado del plugin actualizado.")
+    } else if (done.args[0] === "proton-saves") {
+      root.feedback = root.t(done.args[1] === "disable" || done.args[1] === "off" ? "Copia automática desactivada." : "Copia automática activada.")
     } else if (done.args[1] === "disable" || done.args[1] === "off") {
       root.feedback = root.t("%1 desactivado. Limpieza terminada.").replace("%1", title)
     } else if (done.args[0] === "disk-tiles") {

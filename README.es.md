@@ -268,7 +268,9 @@ Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exist
   (`0700`/`0600`); los discos sin permisos Unix, como NTFS, no pueden garantizarlo,
   y un disco compartido con la VM de Windows las deja visibles allí. `AppData` puede
   contener sesiones de programas.
-- **Copia automática al encender:** apagada hasta que la actives. Se hace una vez al
+- **Copia automática al encender:** el interruptor de la entrada en Extras, apagado
+  hasta que lo actives. Necesita una carpeta elegida: sin ella, al activarlo sale un
+  aviso en rojo y sigue apagado. Entra en la entrada, pulsa **Aplicar** y actívalo. Se hace una vez al
   iniciar el shell de Omarchy, desde el paso de arranque que el plugin ya tiene: sin
   servicios, temporizadores ni procesos en segundo plano. Crea `automatica-…` solo
   si algo cambió, se omite con Proton abierto y avisa si falta el disco. Se conservan
@@ -354,7 +356,7 @@ omarchy-tool exe-proton saves-preview NOMBRE      # JSON: lo que contiene una co
 omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NOMBRE
 omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto
-omarchy-tool exe-proton saves-auto on|off
+omarchy-tool proton-saves enable|disable          # la copia automática; necesita carpeta elegida
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adaptador a DHCP
 omarchy-tool usb-windows enable|disable

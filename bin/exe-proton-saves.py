@@ -179,6 +179,7 @@ def list_saves():
             "copies": list_copies(copies),
             "folder": str(copies.parent),
             "folderAvailable": folder_available(copies),
+            "folderChosen": bool(module_config().get("savesFolder")),
             "auto": module_config().get("savesAuto") is True}
 
 

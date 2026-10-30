@@ -275,7 +275,9 @@ It works with **Open .exe with Proton** off, as long as the prefix exists.
   uninstalling would delete is refused. Copies are private (`0700`/`0600`);
   disks without Unix permissions, like NTFS, can't enforce that, and a disk shared
   with the Windows VM exposes them there. `AppData` can hold programs' sessions.
-- **Automatic copy at startup:** off until you turn it on. It runs once when the
+- **Automatic copy at startup:** the entry's switch in Extras, off until you turn
+  it on. It needs a chosen folder: without one, turning it on shows a notice in red
+  and it stays off. Go into the entry, press **Apply**, then turn it on. It runs once when the
   Omarchy shell starts, from the plugin's existing startup step: no service, timer
   or background process. It makes `automatica-…` only if something changed, skips
   while Proton is open and notifies if the disk is missing. The 5 newest automatic
@@ -358,7 +360,7 @@ omarchy-tool exe-proton saves-preview NAME        # JSON: what a copy contains
 omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NAME
 omarchy-tool exe-proton saves-folder /mnt/datos   # "" goes back to the default
-omarchy-tool exe-proton saves-auto on|off
+omarchy-tool proton-saves enable|disable          # the automatic copy; needs a chosen folder
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adapter back to DHCP
 omarchy-tool usb-windows enable|disable

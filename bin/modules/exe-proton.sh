@@ -136,14 +136,8 @@ exe_proton_saves_folder() {
   output=$(exe_proton_saves_helper folder "${1:-}") || fail "$(exe_proton_saves_error "$output")"
   folder=$(jq -r .folder <<<"$output")
   config_update '.modules["exe-proton"].savesFolder = $folder' --arg folder "$folder"
-}
-
-exe_proton_saves_auto() {
-  case ${1:-} in
-    on) config_update '.modules["exe-proton"].savesAuto = true' ;;
-    off) config_update '.modules["exe-proton"].savesAuto = false' ;;
-    *) fail "$(tool_text 'usa on u off')" ;;
-  esac
+  # The switch needs a chosen folder, so going back to none also turns it off.
+  [[ -n $folder ]] || config_update '.modules["exe-proton"].savesAuto = false'
 }
 
 # Runs once per shell start, from `omarchy-tool apply`. It finishes here, so
