@@ -7,7 +7,7 @@ import unittest
 from test_operation_feedback import function
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "modules/ExeProton.qml").read_text()
+SOURCE = (ROOT / "modules/ProtonSaves.qml").read_text()
 FUNCTIONS = ("requestRead", "pumpRead", "finishRead", "viewCopy", "cancelView", "change", "saveData", "loadData",
              "formatBytes", "areaLabel", "setFolder", "setAuto", "busyChanged")
 PREAMBLE = """
@@ -17,7 +17,7 @@ const readProc = {running: false, command: []};
 const Qt = {callLater: f => f()};
 const tool = {toolPath: '/fake/tool', busy: false, language: 'es', t: s => s, run: a => mutations.push(a)};
 const root = {tool, t: s => s, readProc, listing: {prefixExists: false, groups: [], copies: []}, selectedCopy: '', preview: null,
-  readError: '', readGeneration: 0, listGeneration: 0, activeRead: null, pendingReads: []};
+  listed: false, readError: '', readGeneration: 0, listGeneration: 0, activeRead: null, pendingReads: []};
 const copyA = 'partidas-20261030-084500.tar.zst', copyB = 'partidas-20261030-084501.tar.zst';
 const previewA = {name: copyA, groups: [{name: '<b>Juego</b>', area: 'Saved Games', bytes: 3}]};
 const finishActive = output => { const request = root.activeRead; readProc.running = false; root.finishRead(request, output); };
@@ -185,6 +185,14 @@ class ProtonSavesPage(unittest.TestCase):
           assert.deepEqual(mutations, []);
         """)
 
+    def test_the_page_knows_when_the_first_listing_arrived(self):
+        self.run_page("""
+          root.requestRead(['saves-list']);
+          assert.equal(root.listed, false);
+          finishActive(JSON.stringify({prefixExists: false, groups: [], copies: []}));
+          assert.equal(root.listed, true);
+        """)
+
     def test_sizes_and_areas(self):
         self.run_page("""
           assert.equal(root.formatBytes(0), '0 B');
@@ -197,6 +205,16 @@ class ProtonSavesPage(unittest.TestCase):
           assert.equal(root.areaLabel('Documents'), 'Documentos');
           assert.equal(root.areaLabel('AppData'), 'AppData');
         """)
+
+    def test_copies_have_their_own_entry_apart_from_the_proton_switch(self):
+        panel = (ROOT / "ToolPanel.qml").read_text()
+        self.assertRegex(panel, r'id: "proton-saves", parent: "extras", title: root\.t\("Copias de Proton"\), '
+                                r'source: "modules/ProtonSaves\.qml", switchable: false')
+        self.assertNotIn("saves-", (ROOT / "modules/ExeProton.qml").read_text())
+
+    def test_a_missing_prefix_is_explained_instead_of_an_empty_page(self):
+        self.assertIn("todavía no existe el prefijo de Proton; abre antes un programa con Proton", SOURCE)
+        self.assertIn("root.listed && root.listing.prefixExists !== true", SOURCE)
 
     def test_page_reads_by_itself_without_polling_or_module_state(self):
         self.assertIn("import Quickshell.Io", SOURCE)

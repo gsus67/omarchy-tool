@@ -203,7 +203,6 @@
     "Documentos": "Documents",
     "Automática": "Automatic",
     "Copia previa a cargar": "Copy from before a load",
-    "Partidas y datos": "Saves and data",
     "Guardar incluirá:": "Save will include:",
     "No hay nada que guardar.": "There's nothing to save.",
     "Guardar": "Save",
@@ -217,7 +216,9 @@
     "Cargar": "Load",
     "el prefijo de Proton apunta fuera de su carpeta": "the Proton prefix points outside its folder",
     "esa carpeta se borra al desinstalar; elige otra": "uninstalling deletes that folder; choose another",
-    "ese disco no está montado": "that disk isn't mounted"
+    "ese disco no está montado": "that disk isn't mounted",
+    "Copias de Proton": "Proton saves",
+    "Guarda y carga lo que los programas de Windows dejan en el prefijo de Proton: partidas, documentos y datos.": "Save and load what Windows programs keep in the Proton prefix: saves, documents and data."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
