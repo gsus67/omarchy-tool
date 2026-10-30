@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Whole copies of what Windows programs keep in the Proton prefix.
 
-Usage: exe-proton-saves.py list | preview NAME | save
+Usage: exe-proton-saves.py list | preview NAME | save | load NAME
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import stat
 import sys
 import tarfile
@@ -289,6 +290,69 @@ def save_copy():
     return {"name": write_copy(prefix, copies, "partidas")}
 
 
+def validate_destinations(prefix, members):
+    """Refuse a load that would go through a link or change what a path is."""
+    user = prefix / USER_DIRECTORY
+    if user.is_symlink() or not user.is_dir():
+        raise SavesError("la copia no encaja con lo que hay en el prefijo")
+    for member in members:
+        path = user
+        parts = member.name.split("/")
+        for index, part in enumerate(parts):
+            path = path / part
+            try:
+                mode = os.lstat(path).st_mode
+            except FileNotFoundError:
+                break
+            except OSError as error:
+                raise SavesError("no se pudieron leer los datos de Proton") from error
+            last = index == len(parts) - 1
+            wanted = stat.S_ISREG(mode) if last and member.type != tarfile.DIRTYPE else stat.S_ISDIR(mode)
+            if not wanted:
+                raise SavesError("la copia no encaja con lo que hay en el prefijo")
+
+
+def apply_staged(staging, user, members):
+    """Merge folders and replace files whole; whatever the copy doesn't name stays."""
+    for member in members:
+        target = user / member.name
+        if member.type == tarfile.DIRTYPE:
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(staging / member.name, target)
+
+
+def load_copy(name):
+    prefix, copies = locations()
+    require_closed_prefix(prefix)
+    user = prefix / USER_DIRECTORY
+    staging = None
+    with open_copy(name) as copy, open_archive(copy) as archive:
+        members = validated_members(archive)
+        validate_destinations(prefix, members)
+        try:
+            # Next to the destination: same disk, so files can be moved into place whole.
+            staging = Path(tempfile.mkdtemp(prefix=".omarchy-tool-carga-", dir=user.parent))
+            archive.extractall(staging, members=members, filter="data")
+        except (OSError, tarfile.TarError, EOFError, zstd.ZstdError) as error:
+            if staging:
+                shutil.rmtree(staging, ignore_errors=True)
+            raise SavesError("no se pudo preparar la carga; no cambió nada") from error
+    try:
+        safety = write_copy(prefix, copies, "antes-de-cargar")
+        if proton_open():
+            raise SavesError("cierra Proton antes de guardar o cargar")
+        validate_destinations(prefix, members)
+        try:
+            apply_staged(staging, user, members)
+        except OSError as error:
+            raise SavesError("la carga quedó incompleta; se conservó la copia previa") from error
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return {"name": name, "safetyCopy": safety}
+
+
 def main(argv):
     try:
         if argv == ["list"]:
@@ -297,6 +361,8 @@ def main(argv):
             result = preview_copy(argv[1])
         elif argv == ["save"]:
             result = save_copy()
+        elif len(argv) == 2 and argv[0] == "load":
+            result = load_copy(argv[1])
         else:
             raise SavesError("acción de copias no válida")
     except SavesError as error:

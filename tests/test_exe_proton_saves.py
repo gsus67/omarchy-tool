@@ -340,5 +340,143 @@ class Saving(ProtonSaves):
         self.assertFalse(self.copies.exists())
 
 
+class Loading(ArchiveSafety):
+    def saved_state(self):
+        self.put("Saved Games/Game/slot", b"old")
+        self.put("Documents/Game/slot", b"old")
+        self.put("AppData/Local/Game/slot", b"old")
+        self.put("AppData/LocalLow/Game/slot", b"old")
+        self.put("AppData/Roaming/Game/slot", b"old")
+        return saves.save_copy()["name"]
+
+    def assert_nothing_changed(self, before_prefix, before_copies):
+        self.assertEqual(self.tree(self.prefix), before_prefix)
+        self.assertEqual(self.tree(self.copies), before_copies)
+        self.assertEqual([path.name for path in self.user.parent.iterdir()], ["steamuser"])
+
+    def test_load_overlays_all_areas_and_preserves_later_slots(self):
+        name = self.saved_state()
+        for relative in ("Saved Games/Game/slot", "Documents/Game/slot", "AppData/Local/Game/slot",
+                         "AppData/LocalLow/Game/slot", "AppData/Roaming/Game/slot"):
+            self.put(relative, b"new")
+        self.put("Saved Games/Game/later.sav", b"later")
+        changed = self.tree(self.user)
+        with patch.object(saves, "datetime", wraps=saves.datetime) as clock:
+            clock.now.return_value = datetime(2030, 1, 1)
+            result = saves.load_copy(name)
+        self.assertEqual(self.tree(self.user), {
+            "Saved Games/Game/slot": b"old", "Saved Games/Game/later.sav": b"later", "Documents/Game/slot": b"old",
+            "AppData/Local/Game/slot": b"old", "AppData/LocalLow/Game/slot": b"old",
+            "AppData/Roaming/Game/slot": b"old"})
+        self.assertEqual(result["name"], name)
+        self.assertRegex(result["safetyCopy"], r"^antes-de-cargar-\d{8}-\d{6}\.tar\.zst$")
+        with tarfile.open(self.copies / result["safetyCopy"], "r:zst") as archive:
+            safety = {member.name: archive.extractfile(member).read() for member in archive if member.isfile()}
+        self.assertEqual(safety, changed)
+        self.assertIn(result["safetyCopy"], [copy["name"] for copy in saves.list_saves()["copies"]])
+        self.assertEqual([path.name for path in self.user.parent.iterdir()], ["steamuser"])
+
+    def test_load_recreates_missing_folders(self):
+        name = self.saved_state()
+        shutil.rmtree(self.user / "Saved Games")
+        saves.load_copy(name)
+        self.assertEqual((self.user / "Saved Games/Game/slot").read_bytes(), b"old")
+
+    def test_failed_safety_copy_leaves_prefix_unchanged(self):
+        name = self.saved_state()
+        self.put("Saved Games/Game/slot", b"new")
+        before = self.tree(self.prefix)
+        with patch.object(saves, "write_copy", side_effect=saves.SavesError("no se pudo guardar la copia")):
+            with self.assertRaises(saves.SavesError):
+                saves.load_copy(name)
+        self.assertEqual(self.tree(self.prefix), before)
+
+    def test_destination_link_is_refused_and_hard_link_is_not_written_through(self):
+        name = self.saved_state()
+        outside = self.root / "outside-file"
+        outside.write_bytes(b"outside")
+        destination = self.user / "Saved Games/Game/slot"
+        destination.unlink()
+        destination.symlink_to(outside)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assertEqual(outside.read_bytes(), b"outside")
+        destination.unlink()
+        os.link(outside, destination)
+        saves.load_copy(name)
+        self.assertEqual(outside.read_bytes(), b"outside")
+        self.assertEqual(destination.read_bytes(), b"old")
+
+    def test_linked_folder_in_the_path_is_refused(self):
+        name = self.saved_state()
+        outside = self.root / "outside-folder"
+        outside.mkdir()
+        shutil.rmtree(self.user / "Saved Games/Game")
+        (self.user / "Saved Games/Game").symlink_to(outside)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assertEqual(self.tree(outside), {})
+
+    def test_bad_late_member_changes_nothing(self):
+        name = self.make_copy([regular("Saved Games/Game/slot", b"archived"), regular("../outside")])
+        self.put("Saved Games/Game/slot", b"current")
+        prefix_before, copies_before = self.tree(self.prefix), self.tree(self.copies)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assert_nothing_changed(prefix_before, copies_before)
+
+    def test_truncated_late_payload_changes_nothing(self):
+        payload = random.Random(1).randbytes(1 << 20)
+        name = self.make_copy([regular("Saved Games/Game/slot", b"archived"), regular("Saved Games/Game/big", payload)])
+        path = self.copies / name
+        path.write_bytes(path.read_bytes()[:-(1 << 19)])
+        self.put("Saved Games/Game/slot", b"current")
+        prefix_before, copies_before = self.tree(self.prefix), self.tree(self.copies)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assert_nothing_changed(prefix_before, copies_before)
+
+    def test_open_proton_refuses_load(self):
+        name = self.saved_state()
+        prefix_before, copies_before = self.tree(self.prefix), self.tree(self.copies)
+        with patch.dict(os.environ, {"OMARCHY_TOOL_WINESERVER_PID": "4242"}):
+            with self.assertRaises(saves.SavesError):
+                saves.load_copy(name)
+        self.assert_nothing_changed(prefix_before, copies_before)
+
+    def test_extraction_uses_data_filter(self):
+        name = self.saved_state()
+        real = tarfile.TarFile.extractall
+        with patch.object(tarfile.TarFile, "extractall", autospec=True, side_effect=real) as extractall:
+            saves.load_copy(name)
+        self.assertEqual(extractall.call_args.kwargs["filter"], "data")
+
+    def test_destination_type_conflict_is_rejected_before_backup(self):
+        name = self.saved_state()
+        shutil.rmtree(self.user / "Saved Games/Game")
+        self.put("Saved Games/Game", b"a file now")
+        prefix_before, copies_before = self.tree(self.prefix), self.tree(self.copies)
+        with self.assertRaises(saves.SavesError):
+            saves.load_copy(name)
+        self.assert_nothing_changed(prefix_before, copies_before)
+
+    def test_proton_starting_during_safety_copy_prevents_overlay(self):
+        name = self.saved_state()
+        self.put("Saved Games/Game/slot", b"current")
+        real = saves.write_copy
+
+        def proton_starts(*args):
+            result = real(*args)
+            os.environ["OMARCHY_TOOL_WINESERVER_PID"] = "4242"
+            return result
+
+        with patch.object(saves, "write_copy", side_effect=proton_starts):
+            with self.assertRaises(saves.SavesError):
+                saves.load_copy(name)
+        self.assertEqual((self.user / "Saved Games/Game/slot").read_bytes(), b"current")
+        self.assertEqual(len([copy for copy in saves.list_saves()["copies"] if copy["kind"] == "antes-de-cargar"]), 1)
+        self.assertEqual([path.name for path in self.user.parent.iterdir()], ["steamuser"])
+
+
 if __name__ == "__main__":
     unittest.main()

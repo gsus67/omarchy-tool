@@ -183,7 +183,10 @@
     "ya existe una copia de este segundo; inténtalo de nuevo": "a copy from this same second already exists; try again",
     "no se pudo guardar la copia": "could not save the copy",
     "cierra Proton antes de guardar o cargar": "close Proton before saving or loading",
-    "todavía no existe el prefijo de Proton; abre antes un programa con Proton": "the Proton prefix doesn't exist yet; open a program with Proton first"
+    "todavía no existe el prefijo de Proton; abre antes un programa con Proton": "the Proton prefix doesn't exist yet; open a program with Proton first",
+    "la copia no encaja con lo que hay en el prefijo": "the copy doesn't fit what's in the prefix",
+    "no se pudo preparar la carga; no cambió nada": "could not prepare the load; nothing changed",
+    "la carga quedó incompleta; se conservó la copia previa": "the load is incomplete; the previous copy was kept"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
