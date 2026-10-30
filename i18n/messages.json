@@ -218,7 +218,12 @@
     "esa carpeta se borra al desinstalar; elige otra": "uninstalling deletes that folder; choose another",
     "ese disco no está montado": "that disk isn't mounted",
     "Copias de Proton": "Proton saves",
-    "Guarda y carga lo que los programas de Windows dejan en el prefijo de Proton: partidas, documentos y datos.": "Save and load what Windows programs keep in the Proton prefix: saves, documents and data."
+    "Guarda y carga lo que los programas de Windows dejan en el prefijo de Proton: partidas, documentos y datos.": "Save and load what Windows programs keep in the Proton prefix: saves, documents and data.",
+    "acción de limpieza no válida": "invalid cleanup action",
+    "no se pudo completar la limpieza": "could not complete the cleanup",
+    "no se pudo abrir la carpeta de temporales": "could not open the temp folder",
+    "Temporales (en RAM)": "Temp files (in RAM)",
+    "Archivos de programas que ya terminaron. Limpiarlos libera memoria.": "Files from programs that already finished. Cleaning them frees memory."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
