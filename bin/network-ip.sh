@@ -8,10 +8,11 @@
 #   network-ip.sh list                          JSON: wired/Wi-Fi adapters and their settings
 #   network-ip.sh ip DEVICE                     Print DHCP or Custom
 #   network-ip.sh ip DEVICE DHCP [--notify]     Address and gateway from the router again
-#   network-ip.sh ip DEVICE Custom              Ask for address/prefix and gateway
+#   network-ip.sh ip DEVICE Custom [ADDRESS/PREFIX GATEWAY]
+#                                               Static address; asks when not given
 #   network-ip.sh dns DEVICE                    Print DHCP, Cloudflare, Google or Custom
 #   network-ip.sh dns DEVICE PROVIDER [--notify]  DHCP, Cloudflare or Google
-#   network-ip.sh dns DEVICE Custom             Ask for the DNS servers
+#   network-ip.sh dns DEVICE Custom ["SERVERS"] Own servers; asks when not given
 #
 # --notify reports errors as a desktop notification: the menu runs those rows
 # with no terminal to show them in.
@@ -193,11 +194,15 @@ ip_dhcp() {
   reapply
 }
 
+# ip_custom [ADDRESS/PREFIX GATEWAY]: the panel passes both, the menu's
+# terminal asks for them.
 ip_custom() {
-  local address gateway servers dns_args=()
-  echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
-  address=$(ask 'IP/prefijo' "$(device_get IP4.ADDRESS)")
-  gateway=$(ask 'Puerta de enlace' "$(device_get IP4.GATEWAY)")
+  local address=${1:-} gateway=${2:-} servers dns_args=()
+  if (($# < 2)); then
+    echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
+    address=$(ask 'IP/prefijo' "$(device_get IP4.ADDRESS)")
+    gateway=$(ask 'Puerta de enlace' "$(device_get IP4.GATEWAY)")
+  fi
   address=${address//[[:space:]]/}
   gateway=${gateway//[[:space:]]/}
   check_custom "$address" "$gateway"
@@ -255,10 +260,13 @@ set_dns() {
   reapply
 }
 
+# dns_custom ["SERVERS"]: the panel passes them, the menu's terminal asks.
 dns_custom() {
-  local answer server ipv4="" ipv6=""
-  echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
-  answer=$(ask 'Servidores DNS separados por espacios' "")
+  local answer=${1:-} server ipv4="" ipv6=""
+  if (($# < 1)); then
+    echo "$(tool_text 'Adaptador: %1 (%2)' "$conn_device" "$(conn_get connection.id)")"
+    answer=$(ask 'Servidores DNS separados por espacios' "")
+  fi
   for server in ${answer//,/ }; do
     if valid_ipv4 "$server"; then
       ipv4+="${ipv4:+,}$server"
@@ -274,7 +282,8 @@ dns_custom() {
 }
 
 dns_command() {
-  local provider=$1 global
+  local provider=${1:-} global
+  shift || true
   if [[ $provider != "" ]]; then
     global=$(global_dns)
     [[ $global == DHCP ]] ||
@@ -285,7 +294,7 @@ dns_command() {
     DHCP | dhcp) set_dns "" "" ;;
     Cloudflare | cloudflare) set_dns "1.1.1.1,1.0.0.1" "2606:4700:4700::1111,2606:4700:4700::1001" ;;
     Google | google) set_dns "8.8.8.8,8.8.4.4" "2001:4860:4860::8888,2001:4860:4860::8844" ;;
-    Custom | custom) dns_custom ;;
+    Custom | custom) dns_custom "$@" ;;
     *) usage ;;
   esac
 }
@@ -302,7 +311,9 @@ cmd_list() {
       row=$(jq -n --arg device "$device" --arg type "$type" --arg connection "$(conn_get connection.id)" \
         --arg ip "$(ip_mode)" --arg dns "$(dns_mode)" --arg address "$(device_get IP4.ADDRESS)" \
         --arg gateway "$(device_get IP4.GATEWAY)" \
-        '{device: $device, type: $type, connected: true, connection: $connection, ip: $ip, dns: $dns, address: $address, gateway: $gateway}')
+        --arg servers "$(printf '%s,%s' "$(conn_get ipv4.dns)" "$(conn_get ipv6.dns)" | tr ',' ' ' | xargs)" \
+        '{device: $device, type: $type, connected: true, connection: $connection, ip: $ip, dns: $dns,
+          dnsServers: $servers, address: $address, gateway: $gateway}')
     else
       row=$(jq -n --arg device "$device" --arg type "$type" '{device: $device, type: $type, connected: false}')
     fi
@@ -320,20 +331,30 @@ usage() {
   exit 1
 }
 
+# --notify may come anywhere; everything else is positional.
+args=()
+for arg in "$@"; do
+  if [[ $arg == --notify ]]; then
+    NOTIFY=true
+  else
+    args+=("$arg")
+  fi
+done
+set -- "${args[@]}"
+
 case ${1:-} in
   list) cmd_list ;;
   ip | dns)
-    [[ ${4:-} == --notify ]] && NOTIFY=true
     use_device "${2:-}"
     if [[ $1 == ip ]]; then
       case ${3:-} in
         "") ip_mode ;;
         DHCP | dhcp) ip_dhcp ;;
-        Custom | custom) ip_custom ;;
+        Custom | custom) ip_custom "${@:4}" ;;
         *) usage ;;
       esac
     else
-      dns_command "${3:-}"
+      dns_command "${@:3}"
     fi
     ;;
   *) usage ;;

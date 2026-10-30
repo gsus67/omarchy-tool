@@ -115,7 +115,6 @@
     "no se pudieron configurar los tipos MIME de Windows": "could not configure Windows MIME types",
     "no se pudo iniciar la preparación de GE-Proton": "could not start GE-Proton preparation",
     " · puerta de enlace ": " · gateway ",
-    "Volver a DHCP": "Back to DHCP",
     "ruta no válida para el menú: %1": "invalid path for the menu: %1",
     "no se pudo aplicar el cambio a %1": "could not apply the change to %1",
     "no se pudo cambiar %1": "could not change %1",
@@ -153,9 +152,7 @@
     "Estado del plugin actualizado.": "Plugin state updated.",
     "Red por adaptador": "Network per adapter",
     "Red": "Network",
-    "Elige el adaptador y cambia su IP o sus DNS desde el menú de Omarchy: Setup › Network › IP y Setup › Network › DNS.": "Pick the adapter and change its IP or DNS from the Omarchy menu: Setup › Network › IP and Setup › Network › DNS.",
     "Los DNS de Omarchy están en %1 para todos los adaptadores; ponlos en DHCP para elegirlos por adaptador.": "Omarchy DNS is set to %1 for every adapter; set it to DHCP to choose DNS per adapter.",
-    "fija": "static",
     "Sin conexión": "Not connected",
     "adaptador no válido: %1": "invalid adapter: %1",
     "%1 no está conectado": "%1 is not connected",
@@ -166,7 +163,13 @@
     "servidor DNS no válido: %1": "invalid DNS server: %1",
     "no se indicó ningún servidor DNS": "no DNS server given",
     "DNS de %1: %2": "DNS for %1: %2",
-    "Omarchy usa DNS %1 en todos los adaptadores; ponlo en DHCP para elegir DNS por adaptador": "Omarchy uses %1 DNS on every adapter; set it to DHCP to choose DNS per adapter"
+    "Omarchy usa DNS %1 en todos los adaptadores; ponlo en DHCP para elegir DNS por adaptador": "Omarchy uses %1 DNS on every adapter; set it to DHCP to choose DNS per adapter",
+    "Cambia la IP y los DNS de cada adaptador aquí o desde el menú de Omarchy: Setup › Network › IP y Setup › Network › DNS.": "Change each adapter's IP and DNS here or from the Omarchy menu: Setup › Network › IP and Setup › Network › DNS.",
+    "Fija": "Static",
+    "Aplicar": "Apply",
+    "Cancelar": "Cancel",
+    "falta el modo de IP": "missing IP mode",
+    "falta el proveedor de DNS": "missing DNS provider"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

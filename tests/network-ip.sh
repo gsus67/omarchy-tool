@@ -122,6 +122,20 @@ check "network-ip Custom DNS rejects bad or missing servers" '! printf "9.9.9.9 
 bash "$helper" dns eth0 DHCP
 check "network-ip DHCP DNS hands DNS back to the router" '[[ $(last_modify) == "uuid-e|ipv4.ignore-auto-dns|no|ipv4.dns||ipv6.ignore-auto-dns|no|ipv6.dns||" && $(bash "$helper" dns eth0) == DHCP ]]'
 
+# The module page passes values as arguments: no prompt, same validation.
+reset_nm
+"$tool" network-ip ip eth0 Custom 10.0.0.60/24 10.0.0.1 >"$work/ip-page.out" 2>&1
+check "network-ip page sets a static IP without asking" '[[ $(last_modify) == "uuid-e|ipv4.method|manual|ipv4.addresses|10.0.0.60/24|ipv4.gateway|10.0.0.1|ipv4.dns|10.0.0.1,10.0.10.1|" ]] && ! grep -q "prefijo \[" "$work/ip-page.out"'
+lines=$(wc -l <"$nm/modify.log")
+check "network-ip page values are validated like typed ones" '! "$tool" network-ip ip eth0 Custom 10.0.0.60/24 10.0.1.1 2>/dev/null && ! "$tool" network-ip ip eth0 Custom "10.0.0.60/24 ; id" 10.0.0.1 2>/dev/null && ! "$tool" network-ip ip eth0 Custom 10.0.0.60/24 "" 2>/dev/null && ! "$tool" network-ip ip eth0 2>/dev/null && [[ $(wc -l <"$nm/modify.log") == "$lines" ]]'
+"$tool" network-ip dns wlo1 Custom "9.9.9.9 2620:fe::fe"
+check "network-ip page sets own DNS servers without asking" '[[ $(last_modify) == "uuid-w|ipv4.ignore-auto-dns|yes|ipv4.dns|9.9.9.9|ipv6.ignore-auto-dns|yes|ipv6.dns|2620:fe::fe|" && $(ni ".network.adapters[1].dns") == Custom && $(ni ".network.adapters[1].dnsServers") == "9.9.9.9 2620:fe::fe" ]]'
+lines=$(wc -l <"$nm/modify.log")
+check "network-ip page refuses empty or bad DNS servers" '! "$tool" network-ip dns wlo1 Custom "" 2>/dev/null && ! "$tool" network-ip dns wlo1 Custom "9.9.9.9 \$(id)" 2>/dev/null && ! "$tool" network-ip dns wlo1 2>/dev/null && [[ $(wc -l <"$nm/modify.log") == "$lines" ]]'
+"$tool" network-ip dns wlo1 Google
+check "network-ip page switches DNS provider" '[[ $(ni ".network.adapters[1].dns") == Google ]]'
+reset_nm
+
 printf 'Cloudflare\n' >"$nm/global-dns"
 lines=$(wc -l <"$nm/modify.log")
 check "network-ip leaves DNS to Omarchy while its global DNS is set" '! bash "$helper" dns eth0 Google --notify 2>/dev/null && [[ $(wc -l <"$nm/modify.log") == "$lines" && $(bash "$helper" dns eth0) == DHCP && $(ni .network.globalDns) == Cloudflare ]] && grep -q "Cloudflare" "$work/notify-all.log"'

@@ -124,7 +124,21 @@ network_ip_disable() {
   network_ip_apply
 }
 
-# "Volver a DHCP" on the module page: network-ip dhcp DEVICE.
+# The module page's buttons. Arguments reach the helper as they are (no
+# shell), and it validates every one of them.
+#   network-ip ip DEVICE DHCP|Custom [ADDRESS/PREFIX GATEWAY]
+#   network-ip dns DEVICE DHCP|Cloudflare|Google|Custom ["SERVERS"]
+network_ip_ip() {
+  [[ -n ${2:-} ]] || fail "$(tool_text 'falta el modo de IP')"
+  network_ip_helper ip "$@"
+}
+
+network_ip_dns() {
+  [[ -n ${2:-} ]] || fail "$(tool_text 'falta el proveedor de DNS')"
+  network_ip_helper dns "$@"
+}
+
+# network-ip dhcp DEVICE: kept for the command line.
 network_ip_dhcp() {
   network_ip_helper ip "${1:-}" DHCP
 }
