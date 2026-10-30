@@ -49,7 +49,8 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 
 - **Desactivar una función** borra todo lo que esa función escribió en el
   sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
-  Proton conserva siempre el prefijo Wine, con los programas y partidas guardadas.
+  Proton conserva siempre el prefijo Wine, con los programas y partidas guardadas,
+  y todas las copias hechas con **Partidas y datos**.
 - **Eliminar el plugin** deja el sistema como estaba: quita los discos de la
   configuración de Windows (pide tu contraseña) y borra la configuración del
   plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
@@ -59,7 +60,8 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
   [Línea de comandos](#línea-de-comandos)).
 
 Archivos que el plugin puede escribir fuera de su carpeta, retirados al limpiar
-salvo el prefijo Wine, los registros y los runtimes/cachés gestionados por umu:
+salvo el prefijo Wine, tus copias de Proton, los registros y los runtimes/cachés
+gestionados por umu:
 
 - `~/.config/omarchy-tool/` (configuración) y `~/.local/share/omarchy-tool/`
   (estado y copia del desinstalador)
@@ -241,6 +243,40 @@ manual. El runner respeta `WINEPREFIX`, `GAMEID` y `PROTONPATH`.
 Si quieres borrarlos, elimina tú `~/.local/share/umu/default`.
 Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
+#### Partidas y datos
+
+La página del módulo copia a un archivo lo que los programas de Windows guardan en
+el prefijo, y lo restaura después. Funciona con el módulo desactivado, siempre que
+el prefijo exista.
+
+- **Qué se copia:** `Documents`, `Saved Games` y `AppData/{Local,LocalLow,Roaming}`
+  dentro de `drive_c/users/steamuser`, sin `AppData/Local/{dxvk,Temp,Microsoft,Programs,openvr}`
+  ni `AppData/Roaming/Microsoft`. Los enlaces nunca se siguen. Los juegos abiertos
+  desde Steam usan su propio prefijo y no se incluyen.
+- **Verlo antes:** la página lista lo que **Guardar** incluirá. **Ver** lista lo que
+  contiene una copia, y solo entonces ofrece **Cargar**.
+- **Cargar** sobrescribe lo que está en la copia y deja lo demás, así que una ranura
+  creada después de la copia sigue ahí. Antes hace una copia `antes-de-cargar-…`, y
+  no carga si esa copia falla. Una copia con rutas inseguras, enlaces o daños se
+  rechaza entera antes de cambiar nada.
+- **Con Proton abierto** (un `wineserver` en marcha) no se puede guardar ni cargar.
+- **Dónde:** `<carpeta>/Partidas Proton/`, con `~/Documents` como carpeta por defecto.
+  La carpeta elegida debe existir y estar fuera del prefijo. Si más tarde falta su
+  subcarpeta `Partidas Proton`, la copia falla en vez de crearla de nuevo, para que
+  un disco sin montar nunca llene el disco del sistema. Las copias son privadas
+  (`0700`/`0600`); los discos sin permisos Unix, como NTFS, no pueden garantizarlo,
+  y un disco compartido con la VM de Windows las deja visibles allí. `AppData` puede
+  contener sesiones de programas.
+- **Copia automática al encender:** apagada hasta que la actives. Se hace una vez al
+  iniciar el shell de Omarchy, desde el paso de arranque que el plugin ya tiene: sin
+  servicios, temporizadores ni procesos en segundo plano. Crea `automatica-…` solo
+  si algo cambió, se omite con Proton abierto y avisa si falta el disco. Se conservan
+  las 5 automáticas más recientes; las manuales y las `antes-de-cargar` nunca se
+  borran. **La última sesión no tiene copia hasta el siguiente encendido, así que
+  usa Guardar antes de reinstalar.**
+
+Desactivar o desinstalar nunca toca una copia.
+
 ### Red por adaptador
 
 En **Omarchy › Extras**, permite elegir el adaptador (cable o Wi-Fi) al cambiar
@@ -312,6 +348,12 @@ omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
 omarchy-tool exe-proton enable|disable
+omarchy-tool exe-proton saves-list                # JSON: lo que tendría una copia, y las copias
+omarchy-tool exe-proton saves-preview NOMBRE      # JSON: lo que contiene una copia
+omarchy-tool exe-proton saves-save
+omarchy-tool exe-proton saves-load NOMBRE
+omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto
+omarchy-tool exe-proton saves-auto on|off
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adaptador a DHCP
 omarchy-tool usb-windows enable|disable

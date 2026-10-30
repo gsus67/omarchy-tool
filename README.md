@@ -58,7 +58,8 @@ The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
 
 - **Turning a feature off** removes everything that feature wrote to the
   system. Only your choice is remembered (for example, which disks you ticked).
-  Proton always keeps your Wine prefix, including installed programs and saves.
+  Proton always keeps your Wine prefix, including installed programs and saves,
+  and every copy made with **Saves and data**.
 - **Removing the plugin** puts the system back as it was: it removes the disks
   from the Windows configuration (asks for your password), and deletes the
   plugin settings and the menu entry. Since `omarchy plugin remove` does not run
@@ -68,7 +69,8 @@ The plugin adds an **Omarchy Tool** entry to the Omarchy menu (if you have
   [Command line](#command-line)).
 
 Files the plugin may write outside its folder, removed by the cleanup except
-for the Wine prefix, diagnostic logs and umu-managed runtimes/caches:
+for the Wine prefix, your Proton copies, diagnostic logs and umu-managed
+runtimes/caches:
 
 - `~/.config/omarchy-tool/` (settings) and `~/.local/share/omarchy-tool/`
   (state and the uninstaller copy)
@@ -249,6 +251,38 @@ The runner respects `WINEPREFIX`, `GAMEID` and `PROTONPATH` overrides.
 If you want to erase them, delete `~/.local/share/umu/default` yourself.
 XDG data/cache locations and umu's `UMU_FOLDERS_PATH` are respected.
 
+#### Saves and data
+
+The module's page copies what Windows programs keep in the prefix to one archive
+and restores it later. It works with the module off, as long as the prefix exists.
+
+- **What is copied:** `Documents`, `Saved Games` and `AppData/{Local,LocalLow,Roaming}`
+  under `drive_c/users/steamuser`, leaving out `AppData/Local/{dxvk,Temp,Microsoft,Programs,openvr}`
+  and `AppData/Roaming/Microsoft`. Links are never followed. Games opened from
+  Steam use their own prefix and are not included.
+- **See it first:** the page lists what **Save** will include. **View** lists what
+  a copy contains, and only then offers **Load**.
+- **Loading** overwrites what the copy holds and leaves everything else, so a slot
+  created after the copy stays. It first makes an `antes-de-cargar-…` copy, and
+  won't load if that fails. A copy with unsafe paths, links or damage is refused
+  whole before anything changes.
+- **With Proton open** (a `wineserver` running), saving and loading are refused.
+- **Where:** `<folder>/Partidas Proton/`, with `~/Documents` as the default folder.
+  A chosen folder must exist and be outside the prefix. If its `Partidas Proton`
+  subfolder later goes missing, the copy fails instead of creating it again, so an
+  unmounted disk never fills the system disk. Copies are private (`0700`/`0600`);
+  disks without Unix permissions, like NTFS, can't enforce that, and a disk shared
+  with the Windows VM exposes them there. `AppData` can hold programs' sessions.
+- **Automatic copy at startup:** off until you turn it on. It runs once when the
+  Omarchy shell starts, from the plugin's existing startup step: no service, timer
+  or background process. It makes `automatica-…` only if something changed, skips
+  while Proton is open and notifies if the disk is missing. The 5 newest automatic
+  copies are kept; manual and `antes-de-cargar` copies are never deleted.
+  **The last session has no copy until the next startup, so use Save before
+  reinstalling.**
+
+Disabling or uninstalling never touches a copy.
+
 ### Network per adapter
 
 Under **Omarchy › Extras**, lets you pick the adapter (Ethernet or Wi-Fi) when
@@ -317,6 +351,12 @@ omarchy-tool web-devices add 1b1c:2b0d            # vendor:product (lsusb)
 omarchy-tool web-devices remove 1b1c:2b0d
 omarchy-tool exe-icons enable|disable
 omarchy-tool exe-proton enable|disable
+omarchy-tool exe-proton saves-list                # JSON: what a copy would hold, and the copies
+omarchy-tool exe-proton saves-preview NAME        # JSON: what a copy contains
+omarchy-tool exe-proton saves-save
+omarchy-tool exe-proton saves-load NAME
+omarchy-tool exe-proton saves-folder /mnt/datos   # "" goes back to the default
+omarchy-tool exe-proton saves-auto on|off
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adapter back to DHCP
 omarchy-tool usb-windows enable|disable
