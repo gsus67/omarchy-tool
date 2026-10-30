@@ -7,6 +7,11 @@ and off with a switch. It adds a bar icon that opens a panel with one module per
 feature. The panel uses Omarchy's theme components and colors, so it changes
 with your theme.
 
+Switches show work in progress and notify when a change starts, finishes or
+fails. Disk tiles distinguishes installed files from a loaded view: if Files
+was already running, it asks you to close and reopen it. Automatic startup
+sync does not generate notifications.
+
 ![Omarchy Tool panel](preview.png)
 
 The panel, its modules, states and notifications follow the system language
@@ -87,6 +92,19 @@ for the Wine prefix, diagnostic logs and umu-managed runtimes/caches:
   can remove them, and deletes itself when run)
 
 ## Modules
+
+### Disk tiles (Extras)
+
+A switch to open Files on **This PC**, with disk cards, usage bars and free/total
+space. Opening a drive navigates normally in Nautilus; explicit folder launches
+keep their destination.
+
+Requires Nautilus 50/51, `nautilus-python`, GTK4 and libadwaita. After enabling,
+close Files windows and open Files again. No password, package installation or
+interruption of file operations. Disable/uninstall removes the extension and
+the added bookmark, preserving existing bookmarks and user edits. The view uses
+internal Nautilus structures; see [Disk tiles](docs/DISK_TILES.md) for compatibility,
+footprint and tests.
 
 ### Disks in Windows
 

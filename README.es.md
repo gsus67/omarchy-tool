@@ -7,6 +7,11 @@ activan y desactivan con un interruptor. Añade un icono a la barra que abre un
 panel con un módulo por función. El panel usa los componentes y colores del
 tema de Omarchy, así que cambia junto con el tema.
 
+Cada interruptor muestra el cambio en curso y avisa al empezar, terminar o
+fallar. La vista de discos distingue la instalación terminada de la vista ya
+cargada: si Archivos estaba abierto, indica que hay que cerrarlo y volver a
+abrirlo. Las sincronizaciones automáticas al arrancar no generan avisos.
+
 El panel, sus módulos, estados y avisos siguen automáticamente el idioma del sistema (`LC_ALL`, `LC_MESSAGES`, `LANG`). Incluye inglés y español; otros idiomas usan inglés como respaldo. Los nombres de discos y periféricos se conservan. Los mensajes de los auxiliares dentro de Windows siguen el idioma de interfaz de Windows; sus nombres de archivo y rutas se mantienen para conservar los accesos existentes.
 
 ## Requisitos
@@ -77,6 +82,19 @@ salvo el prefijo Wine, los registros y los runtimes/cachés gestionados por umu:
   letras asignadas, **Quitar discos** se conserva y se borra al ejecutarlo)
 
 ## Módulos
+
+### Discos en mosaicos (Extras)
+
+Un interruptor para abrir Archivos en **Este equipo**, con los discos en mosaicos,
+barra de ocupación y espacio libre y total. Al abrir un disco navegas normalmente
+en Nautilus; las carpetas abiertas por su ruta mantienen su destino.
+
+Requiere Nautilus 50/51, `nautilus-python`, GTK4 y libadwaita. Después de activar,
+cierra las ventanas de Archivos y vuelve a abrirlo. No pide contraseña, instala
+paquetes ni interrumpe operaciones de archivos. Al desactivar o desinstalar se
+retiran la extensión y el acceso añadido, conservando marcadores y cambios del
+usuario. La integración depende de estructuras internas de Nautilus; detalles,
+huella y pruebas en [Discos en mosaicos](docs/DISK_TILES.md).
 
 ### Discos en Windows
 

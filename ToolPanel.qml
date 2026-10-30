@@ -30,6 +30,16 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function language(): string { return root.language }
+    function operation(): string {
+      return JSON.stringify({ busy: root.busy, message: root.feedback, error: root.error,
+        diskTiles: root.moduleStatus("disk-tiles") })
+    }
+    function setEnabled(id: string, enabled: bool): bool {
+      var module = root.modules.filter(function(m) { return m.id === id && m.switchable !== false })[0]
+      if (!module || root.busy) return false
+      root.run([id, enabled ? "enable" : "disable"])
+      return true
+    }
     function page(id: string): void {
       for (var i = 0; i < root.modules.length; i++) {
         if (root.modules[i].id === id) {
@@ -48,6 +58,7 @@ Panel {
     { id: "usb-windows", group: "Windows", title: root.t("Periféricos en Windows"), hint: root.t("SUPER + ALT + U: devolver todo a Linux"), source: "modules/UsbWindows.qml" },
     { id: "web-devices", group: root.t("Navegador"), title: root.t("Periféricos en navegador"), source: "modules/WebDevices.qml" },
     { id: "extras", group: "Omarchy", title: root.t("Extras"), switchable: false },
+    { id: "disk-tiles", parent: "extras", title: root.t("Discos en mosaicos"), source: "modules/DiskTiles.qml" },
     { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
     { id: "network-ip", parent: "extras", title: root.t("IP de red"), source: "modules/NetworkIp.qml" },
@@ -72,6 +83,10 @@ Panel {
   }
   property string error: ""
   property bool busy: false
+  property string feedback: ""
+  property var activeAction: []
+  property var pendingFeedback: null
+  property bool refreshPending: false
   property var queue: []
   property var current: null
   // Keyboard cursor on the list (-1: none until an arrow key is pressed).
@@ -110,14 +125,62 @@ Panel {
   }
 
   function refresh() {
-    if (!statusProc.running) statusProc.running = true
+    if (statusProc.running) refreshPending = true
+    else statusProc.running = true
+  }
+
+  function isSwitch(args) {
+    return args.length > 1 && ["enable", "disable", "on", "off"].indexOf(args[1]) !== -1
+  }
+
+  function actionTitle(args) {
+    var module = root.modules.filter(function(m) { return m.id === args[0] })[0]
+    return module ? module.title : "Omarchy Tool"
+  }
+
+  function diskTilesMessage() {
+    var state = root.moduleStatus("disk-tiles")
+    if (!state.enabled) return ""
+    if (state.applied !== true) return root.t("La instalación necesita atención. Consulta el error.")
+    if (state.ready) return root.t("Vista lista para usar.")
+    if (state.restartRequired) return root.t("Instalado. Cierra Archivos y vuelve a abrirlo para cargar la vista.")
+    return root.t("Instalado. Abre Archivos para ver Este equipo.")
+  }
+
+  function completeFeedback(readable) {
+    if (root.pendingFeedback === null) return
+    var done = root.pendingFeedback
+    var title = root.actionTitle(done.args)
+    var state = root.moduleStatus(done.args[0])
+    if (done.exitCode !== 0 || !readable || state.applied === false || state.error) {
+      root.feedback = root.t("No se pudo completar %1.").replace("%1", title)
+      if (root.error === "") root.error = root.t("Consulta el estado antes de volver a intentarlo.")
+    } else if (done.args[0] === "plugins") {
+      root.feedback = root.t("Estado del plugin actualizado.")
+    } else if (done.args[1] === "disable" || done.args[1] === "off") {
+      root.feedback = root.t("%1 desactivado. Limpieza terminada.").replace("%1", title)
+    } else if (done.args[0] === "disk-tiles") {
+      root.feedback = root.diskTilesMessage()
+    } else if (done.args[0] === "exe-proton") {
+      root.feedback = root.t("Proton activado. Si necesita descargar GE-Proton, recibirás otro aviso cuando esté listo.")
+    } else {
+      root.feedback = root.t("%1 activado. Cambio aplicado.").replace("%1", title)
+    }
+    root.pendingFeedback = null
+    root.busy = false
+    Qt.callLater(root.pump)
   }
 
   function pump() {
-    if (actionProc.running || queue.length === 0) return
+    if (actionProc.running || pendingFeedback !== null || queue.length === 0) return
     var next = queue[0]
     queue = queue.slice(1)
     busy = true
+    activeAction = next
+    if (root.isSwitch(next)) {
+      feedback = root.t(next[1] === "disable" || next[1] === "off"
+        ? "Desactivando %1 y retirando sus cambios…" : "Preparando y activando %1…").replace("%1", root.actionTitle(next))
+    }
     actionProc.command = [toolPath].concat(next)
     actionProc.running = true
   }
@@ -212,11 +275,26 @@ Panel {
       onStreamFinished: {
         try {
           root.status = JSON.parse(text)
+          if (!root.refreshPending) root.completeFeedback(true)
         } catch (e) {
           root.error = root.t("No se pudo leer el estado del plugin")
+          if (!root.refreshPending) root.completeFeedback(false)
         }
       }
     }
+    onExited: {
+      if (root.refreshPending) {
+        root.refreshPending = false
+        Qt.callLater(function() { statusProc.running = true })
+      }
+    }
+  }
+
+  Timer {
+    interval: 2000
+    repeat: true
+    running: root.opened && root.moduleStatus("disk-tiles").enabled === true
+    onTriggered: if (!root.busy && !statusProc.running) root.refresh()
   }
 
   Process {
@@ -230,7 +308,9 @@ Panel {
     }
     onRunningChanged: if (running) root.error = ""
     onExited: function(exitCode) {
-      root.busy = false
+      if (root.isSwitch(root.activeAction)) {
+        root.pendingFeedback = { args: root.activeAction.slice(), exitCode: exitCode }
+      } else root.busy = false
       root.refresh()
       Qt.callLater(root.pump)
     }
@@ -332,12 +412,13 @@ Panel {
               ModuleButton {
                 width: parent.width
                 title: modelData.title
-                hint: modelData.hint || ""
+                hint: root.busy && root.activeAction[0] === modelData.id ? root.feedback
+                  : modelData.id === "disk-tiles" ? root.diskTilesMessage() : modelData.hint || ""
                 checked: parent.on
                 switchable: modelData.switchable !== false
                 hasCursor: root.cursorIndex === parent.index
                 onClicked: root.openModule(modelData)
-                onToggled: root.run([modelData.id, parent.on ? "disable" : "enable"])
+                onToggled: if (!root.busy) root.run([modelData.id, parent.on ? "disable" : "enable"])
               }
             }
           }
@@ -356,6 +437,17 @@ Panel {
               item.tool = root
               item.status = Qt.binding(function() { return root.moduleStatus(id) })
             }
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            visible: root.feedback !== ""
+            text: root.feedback
+            color: root.barForeground
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.Wrap
+            width: parent.width
           }
 
           Text {
@@ -395,7 +487,7 @@ Panel {
     activeFocusOnTab: true
     Keys.onReturnPressed: entry.clicked()
     Keys.onEnterPressed: entry.clicked()
-    Keys.onSpacePressed: entry.switchable ? entry.toggled() : entry.clicked()
+    Keys.onSpacePressed: if (!root.busy) entry.switchable ? entry.toggled() : entry.clicked()
 
     implicitHeight: Math.max(48, Math.max(toggle.implicitHeight, labels.implicitHeight) + Style.spacing.huge)
     radius: Style.cornerRadius
@@ -461,6 +553,7 @@ Panel {
       id: toggle
       visible: entry.switchable
       checked: entry.checked
+      busy: root.busy
       cursorRing: false
       foreground: entry.fg
       anchors.right: parent.right
