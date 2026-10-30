@@ -38,6 +38,9 @@ class ProtonSaves(unittest.TestCase):
         })
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        no_fstab = patch.object(saves, "FSTAB_FILE", self.root / "no-fstab")  # Never the host's disks.
+        no_fstab.start()
+        self.addCleanup(no_fstab.stop)
 
     def put(self, relative, data=b"x"):
         path = self.user / relative
