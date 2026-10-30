@@ -29,8 +29,60 @@ MENU_FILE="${OMARCHY_TOOL_MENU_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/e
 export TOOL_DIR CONFIG_DIR CONFIG_FILE STATE_DIR
 
 fail() {
-  printf 'omarchy-tool: %s\n' "$(tool_text "$*")" >&2
+  OPERATION_ERROR=$(tool_text "$*")
+  printf 'omarchy-tool: %s\n' "$OPERATION_ERROR" >&2
   exit 1
+}
+
+# Explicit switches give feedback even if the panel closes during a password
+# prompt. Startup apply and automatic background work remain quiet.
+operation_notice() {
+  local urgency=$1 message=$2
+  command -v omarchy-notification-send >/dev/null || return 0
+  timeout 3 omarchy-notification-send --app-name "Omarchy Tool" -u "$urgency" \
+    "Omarchy Tool" "$message" >/dev/null 2>&1 || true
+}
+
+operation_title() {
+  case $1 in
+    disk-tiles) tool_text 'Discos en mosaicos' ;;
+    exe-icons) tool_text 'Iconos de .exe' ;;
+    exe-proton) tool_text 'Abrir .exe con Proton' ;;
+    windows-disks) tool_text 'Discos en Windows' ;;
+    usb-windows) tool_text 'Periféricos en Windows' ;;
+    web-devices) tool_text 'Periféricos en navegador' ;;
+    plugins) tool_text 'Plugins' ;;
+  esac
+}
+
+operation_done() {
+  local code=$1 message runtime
+  trap - EXIT
+  if ((code != 0)); then
+    message=$(tool_text 'No se pudo completar %1. %2' "$OPERATION_TITLE" "${OPERATION_ERROR:-$(tool_text 'Abre Tool para consultar el error.')}")
+    operation_notice critical "$message"
+  else
+    if [[ $OPERATION_MODULE == plugins ]]; then
+      message=$(tool_text 'Estado del plugin actualizado.')
+    elif [[ $OPERATION_ACTION == disable || $OPERATION_ACTION == off ]]; then
+      message=$(tool_text '%1 desactivado. Limpieza terminada.' "$OPERATION_TITLE")
+    elif [[ $OPERATION_MODULE == disk-tiles ]]; then
+      runtime=$(disk_tiles_status)
+      if [[ $(jq -r '.ready' <<<"$runtime") == true ]]; then
+        message=$(tool_text 'Discos en mosaicos listo para usar.')
+      elif [[ $(jq -r '.restartRequired' <<<"$runtime") == true ]]; then
+        message=$(tool_text 'Instalación terminada. Cierra todas las ventanas de Archivos, espera unos segundos y vuelve a abrirlo para cargar Este equipo.')
+      else
+        message=$(tool_text 'Instalación terminada. Abre Archivos para ver Este equipo.')
+      fi
+    elif [[ $OPERATION_MODULE == exe-proton ]]; then
+      message=$(tool_text 'Proton activado. Si necesita descargar GE-Proton, recibirás otro aviso cuando esté listo.')
+    else
+      message=$(tool_text '%1 activado. Cambio aplicado.' "$OPERATION_TITLE")
+    fi
+    operation_notice normal "$message"
+  fi
+  return "$code"
 }
 
 # --- config helpers ----------------------------------------------------------
@@ -363,6 +415,20 @@ main() {
       shift
       fn=$(module_fn "$command" "$action")
       has_fn "$fn" || fail "$(tool_text 'unknown action for %1: %2' "$command" "$action")"
+      case $action in
+        enable|disable|on|off)
+          OPERATION_MODULE=$command
+          OPERATION_ACTION=$action
+          OPERATION_TITLE=$(operation_title "$command")
+          OPERATION_ERROR=''
+          trap 'operation_done "$?"' EXIT
+          if [[ $action == disable || $action == off ]]; then
+            operation_notice normal "$(tool_text 'Desactivando %1 y retirando sus cambios…' "$OPERATION_TITLE")"
+          else
+            operation_notice normal "$(tool_text 'Preparando y activando %1…' "$OPERATION_TITLE")"
+          fi
+          ;;
+      esac
       "$fn" "$@"
       ;;
   esac

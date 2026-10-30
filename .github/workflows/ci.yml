@@ -17,12 +17,10 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm --needed bash jq python gawk sed coreutils findutils util-linux diffutils git shadow qt6-declarative
+        run: pacman -Syu --noconfirm --needed bash jq python nodejs gawk sed coreutils findutils util-linux diffutils git shadow qt6-declarative
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: QML security checks
-        run: python -m unittest discover -s tests -v
       # As root the scripts ignore the test overrides on purpose, so the tests
       # run as a normal user with a home under /home, like on a real install.
       # The self-update test clones this checkout, so it needs a branch and a
@@ -32,12 +30,29 @@ jobs:
           useradd -m -d /home/ci ci
           git config --system --add safe.directory '*'
           git checkout -q -B ci
+      - name: Unit, lifecycle, feedback and QML security checks
+        run: runuser -u ci -- python -B -m unittest discover -s tests -v
       - name: Backend tests
         run: runuser -u ci -- env HOME=/home/ci bash tests/run.sh
       - name: Locale tests
         run: runuser -u ci -- env HOME=/home/ci bash tests/i18n.sh
       - name: Plugin manifest
         run: jq empty manifest.json
+
+  nautilus-integration:
+    name: Nautilus disk tiles
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install isolated GUI test tools
+        run: pacman -Syu --noconfirm --needed python nautilus nautilus-python gvfs gtk4 libadwaita dbus shadow
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test user
+        run: useradd -m ci
+      - name: Real Nautilus navigation and live cleanup in a private session
+        run: runuser -u ci -- python -B tests/disk_tiles_integration.py
 
   shellcheck:
     name: ShellCheck
@@ -50,20 +65,24 @@ jobs:
         run: shellcheck --severity=error --shell=bash bin/*.sh bin/omarchy-tool bin/exe-thumbnailer bin/modules/*.sh tests/*.sh
 
   codeql:
-    name: CodeQL (actions)
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, python]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          languages: actions
+          languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          category: /language:actions
+          category: /language:${{ matrix.language }}
