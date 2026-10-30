@@ -61,7 +61,7 @@ Panel {
     { id: "disk-tiles", parent: "extras", title: root.t("Discos en mosaicos"), source: "modules/DiskTiles.qml" },
     { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
-    { id: "network-ip", parent: "extras", title: root.t("IP de red"), source: "modules/NetworkIp.qml" },
+    { id: "network-ip", parent: "extras", title: root.t("Red por adaptador"), source: "modules/NetworkIp.qml" },
     { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
 
