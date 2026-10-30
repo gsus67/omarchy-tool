@@ -295,12 +295,12 @@ A notification reports what was freed and what was skipped.
 
 | Row | What goes | What protects you |
 |---|---|---|
-| Temp files (in RAM) | Your own entries in `/tmp` | Only with nothing open inside and no change in 24 hours |
-| Program caches | The `~/.cache` folders you marked | A folder a program is using is skipped and named |
+| Temp files (in RAM) | Your own entries in `/tmp` | Only with nothing open inside and no change in 24 hours; lock files stay |
+| Program caches | The `~/.cache` folders you marked | A folder in use, or with a socket or pipe inside, is skipped and named |
 | Pacman packages | `paccache -rk3` | Keeps 3 versions of each package; asks for your password |
 | Orphan packages | `pacman -Rns` of the current orphans | Lists everything that goes first, dependencies included; asks for your password |
 | Crash dumps | Files in `/var/lib/systemd/coredump` | Warns that the diagnosis is lost; asks for your password |
-| Journal | `journalctl --rotate --vacuum-size=50M` | Trims to 50 MB, whole files, oldest first; asks for your password |
+| Journal | `journalctl --rotate --vacuum-size=50M` | Removes whole files, oldest first, until under 50 MB, which can leave much less history; asks for your password |
 
 **Choose** opens the caches with one switch per program of 100 MB or more, and
 **Others** for the smaller ones, each with what deleting it costs. Marks are
@@ -309,9 +309,11 @@ removes what is marked, and isn't available with nothing marked. Loose files in
 `~/.cache`, like the Proton logs, stay.
 
 "In use" means open, running or as the working directory of one of your processes,
-and what can't be checked counts as in use. Other users' processes and protected
-ones of your own can't be checked, which is one reason for the 24 hours. Links are
-never followed. Nothing of the plugin runs as root: the password only authorizes
+or holding a mounted disk, and a process of yours that can't be read counts as using
+everything, except your session's `systemd` and `(sd-pam)`. Other users' processes
+and those the kernel protects (a root-owned `/proc/<pid>`) can't be checked at all:
+temp files have the 24 hours as a margin for that, the cache has none. Links are
+never followed, and another disk is never entered. Nothing of the plugin runs as root: the password only authorizes
 those system commands with fixed arguments, and package names come from `pacman`
 at that moment, never from the page. Cleaning can't stop files coming back: if a
 program keeps leaving files in `/tmp`, that is for that program to fix.

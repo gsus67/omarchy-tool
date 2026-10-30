@@ -47,6 +47,8 @@ class CleanupCase(unittest.TestCase):
         })
         self.environment.start()
         self.addCleanup(self.environment.stop)
+        (self.proc / "self").mkdir()
+        (self.proc / "self/mountinfo").write_text("")
         self.now = os.stat(self.root).st_ctime + 2 * DAY
 
     def write(self, path, data=b"x" * 8192):
@@ -54,10 +56,11 @@ class CleanupCase(unittest.TestCase):
         path.write_bytes(data)
         return path
 
-    def process(self, pid="100", fds=None, cwd=None, exe=None, maps=""):
+    def process(self, pid="100", fds=None, cwd=None, exe=None, maps="", comm="programa"):
         """A synthetic /proc entry owned by this user."""
         directory = self.proc / pid
         (directory / "fd").mkdir(parents=True)
+        (directory / "comm").write_text(comm + "\n")
         for number, target in enumerate(fds or []):
             (directory / "fd" / str(number)).symlink_to(target)
         (directory / "cwd").symlink_to(cwd or "/")
@@ -76,6 +79,21 @@ class Measuring(CleanupCase):
         os.truncate(sparse, 50 * 1024 * 1024)
         self.assertEqual(cleanup.allocated_bytes(sparse), sparse.lstat().st_blocks * 512)
         self.assertLess(cleanup.allocated_bytes(sparse), sparse.lstat().st_size)
+
+    def test_hard_links_are_not_counted_twice(self):
+        one = self.write(self.temp / "folder/one", b"x" * 8192)
+        os.link(one, self.temp / "folder/two")
+        size = one.lstat().st_blocks * 512
+        self.assertEqual(cleanup.allocated_bytes(self.temp / "folder"),
+                         size + (self.temp / "folder").lstat().st_blocks * 512)
+
+    def test_a_very_deep_folder_is_not_a_crash(self):
+        path = self.temp / "deep"
+        path.mkdir()
+        for _ in range(1200):
+            path = path / "d"
+            path.mkdir()
+        self.assertGreaterEqual(cleanup.allocated_bytes(self.temp / "deep"), 0)
 
     def test_usage_of_a_folder_does_not_follow_links(self):
         outside = self.write(self.root / "outside/big", b"x" * 65536)
@@ -130,6 +148,45 @@ class InUse(CleanupCase):
 
         with patch.object(cleanup.os, "listdir", side_effect=denied):
             self.assertTrue(cleanup.is_in_use(self.entry, self.proc))
+
+    def test_the_session_managers_being_unreadable_blocks_nothing(self):
+        for pid, name in (("100", "systemd"), ("101", "(sd-pam)")):
+            self.process(pid=pid, comm=name)
+        real = os.listdir
+
+        def denied(path):
+            if str(path).endswith(("/100/fd", "/101/fd")):
+                raise PermissionError(13, "denied")
+            return real(path)
+
+        with patch.object(cleanup.os, "listdir", side_effect=denied):
+            self.assertFalse(cleanup.is_in_use(self.entry, self.proc))
+
+    def test_a_process_ending_while_read_does_not_block(self):
+        self.process()
+        real = os.listdir
+
+        def ended(path):
+            if str(path).endswith("/100/fd"):
+                raise ProcessLookupError(3, "ended")
+            return real(path)
+
+        with patch.object(cleanup.os, "listdir", side_effect=ended):
+            self.assertFalse(cleanup.is_in_use(self.entry, self.proc))
+
+    def test_a_mount_inside_counts_as_in_use(self):
+        (self.proc / "self/mountinfo").write_text(f"36 35 98:0 / {self.entry}/remote rw,noatime - fuse.sshfs host rw\n")
+        self.assertTrue(cleanup.is_in_use(self.entry, self.proc))
+
+    def test_a_mount_with_a_space_in_its_path_counts(self):
+        spaced = self.temp / "con espacio"
+        spaced.mkdir()
+        (self.proc / "self/mountinfo").write_text(f"36 35 98:0 / {self.temp}/con\\040espacio rw - fuse.x y rw\n")
+        self.assertTrue(cleanup.is_in_use(spaced, self.proc))
+
+    def test_unreadable_mounts_count_as_in_use(self):
+        (self.proc / "self/mountinfo").unlink()
+        self.assertTrue(cleanup.is_in_use(self.entry, self.proc))
 
     def test_processes_of_other_users_are_not_inspected(self):
         self.process(fds=[str(self.inner)])
@@ -296,6 +353,113 @@ class Temporales(CleanupCase):
             cleanup.remove_entry(descriptor, "old", identity)
         self.assertEqual(outside.read_bytes(), b"keep")
 
+    def test_another_disk_inside_an_entry_is_never_entered(self):
+        entry = self.old_entry()
+        inner = self.write(entry / "remote/file", b"keep")
+        real_scandir = os.scandir
+
+        class Foreign:
+            def __init__(self, item):
+                self.item = item
+                self.name = item.name
+                self.path = item.path
+
+            def stat(self, follow_symlinks=True):
+                values = list(self.item.stat(follow_symlinks=follow_symlinks))
+                values[2] += 1
+                return os.stat_result(values)
+
+        class Listing:
+            def __init__(self, listing):
+                self.listing = listing
+
+            def __enter__(self):
+                return [Foreign(item) if item.name == "remote" else item for item in self.listing]
+
+            def __exit__(self, *details):
+                self.listing.close()
+
+        with patch.object(cleanup.os, "scandir", side_effect=lambda path: Listing(real_scandir(path))):
+            self.assertIsNone(cleanup.scan_temp(now=self.now))
+            result = cleanup.clean_temp(now=self.now)
+        self.assertEqual(inner.read_bytes(), b"keep")
+        self.assertEqual(result["skippedNames"], ["old"])
+
+    def test_removing_refuses_to_cross_into_another_disk(self):
+        entry = self.old_entry()
+        inner = self.write(entry / "remote/file", b"keep")
+        real_scandir = os.scandir
+
+        class Foreign:
+            def __init__(self, item):
+                self.item = item
+                self.name = item.name
+                self.path = item.path
+
+            def stat(self, follow_symlinks=True):
+                values = list(self.item.stat(follow_symlinks=follow_symlinks))
+                values[2] += 1
+                return os.stat_result(values)
+
+        class Listing:
+            def __init__(self, listing):
+                self.listing = listing
+
+            def __enter__(self):
+                return [Foreign(item) if item.name == "remote" else item for item in self.listing]
+
+            def __exit__(self, *details):
+                self.listing.close()
+
+        status = entry.lstat()
+        descriptor = os.open(self.temp, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, descriptor)
+        with patch.object(cleanup.os, "scandir", side_effect=lambda path: Listing(real_scandir(path))):
+            with self.assertRaises(OSError):
+                cleanup.remove_entry(descriptor, "old", (status.st_dev, status.st_ino))
+        self.assertEqual(inner.read_bytes(), b"keep")
+
+    def test_lock_files_are_left_alone(self):
+        self.write(self.temp / ".X0-lock")
+        self.write(self.temp / "uv-123.lock")
+        self.assertIsNone(cleanup.scan_temp(now=self.now))
+        result = cleanup.clean_temp(now=self.now)
+        self.assertTrue((self.temp / ".X0-lock").exists())
+        self.assertTrue((self.temp / "uv-123.lock").exists())
+        self.assertEqual(result["skippedCount"], 0)
+
+    def test_a_very_deep_entry_is_skipped_not_a_crash(self):
+        path = self.temp / "deep"
+        path.mkdir()
+        for _ in range(1200):
+            path = path / "d"
+            path.mkdir()
+        self.assertIsNone(cleanup.scan_temp(now=self.now))
+        self.assertEqual(cleanup.clean_temp(now=self.now)["skippedNames"], ["deep"])
+
+    def test_an_entry_that_changed_during_the_run_stays(self):
+        first = self.old_entry("a")
+        second = self.old_entry("b")
+        real = cleanup.remove_entry
+        fresh = self.now
+
+        def touch_b_after_a(directory, name, identity):
+            freed = real(directory, name, identity)
+            os.utime(second / "file", (fresh, fresh))
+            return freed
+
+        with patch.object(cleanup, "remove_entry", side_effect=touch_b_after_a):
+            cleanup.clean_temp(now=self.now)
+        self.assertFalse(first.exists())
+        self.assertTrue(second.exists())
+
+    def test_processes_are_not_walked_once_per_entry(self):
+        for number in range(30):
+            self.old_entry(f"e{number}")
+        with patch.object(cleanup, "open_targets", wraps=cleanup.open_targets) as walk:
+            cleanup.clean_temp(now=self.now)
+        self.assertLess(walk.call_count, 5)
+
     def test_nothing_to_clean_omits_the_category(self):
         self.assertIsNone(cleanup.scan_temp(now=self.now))
 
@@ -392,7 +556,7 @@ class Cache(CleanupCase):
         outside = self.write(self.root / "outside/keep", b"keep").parent
         (self.cache / "linked").symlink_to(outside)
         self.write(self.cache / "loose")
-        for names in (["../outside"], ["a/b"], ["a..b"], [""], ["."], ["\0"], ["linked"], ["loose"], ["missing"],
+        for names in (["../outside"], ["a/b"], [".."], [""], ["."], ["\0"], ["linked"], ["loose"], ["missing"],
                       ["uv", "uv"], ["uv", "../outside"], [], [1], "uv", {"uv": 1}, None):
             with self.subTest(names=names), self.assertRaises(cleanup.CleanupError):
                 cleanup.cache_names(json.dumps(names))
@@ -401,7 +565,7 @@ class Cache(CleanupCase):
         self.assertTrue(keep.exists())
 
     def test_names_with_markup_quotes_and_spaces_are_valid(self):
-        names = ["<b>x", 'a"b', "con espacio", "ñ"]
+        names = ["<b>x", 'a"b', "con espacio", "ñ", "a..b"]
         for name in names:
             self.folder(name)
         self.assertEqual(cleanup.cache_names(json.dumps(names)), names)
@@ -417,6 +581,44 @@ class Cache(CleanupCase):
         self.assertTrue(busy.exists())
         self.assertTrue(loose.exists())
         self.assertEqual(result, {"freedBytes": expected, "skippedCount": 1, "skippedNames": ["busy"]})
+
+    def test_a_vanished_folder_is_skipped_not_a_refusal(self):
+        free = self.folder("uv")
+        result = self.cli("clean", "cache", '["uv", "gone"]')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertFalse(free.exists())
+        self.assertEqual(json.loads(result.stdout)["skippedNames"], ["gone"])
+
+    def test_a_stale_mark_can_be_dropped(self):
+        self.assertEqual(json.loads(self.cli("validate-names", '["gone"]').stdout), {"names": ["gone"]})
+        self.assertEqual(self.cli("validate-names", '["../x"]').returncode, 1)
+
+    def test_a_folder_with_a_socket_or_fifo_inside_is_skipped(self):
+        with_socket = self.folder("daemon")
+        with_fifo = self.folder("pipe")
+        os.mkfifo(with_fifo / "fifo")
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(with_socket / "s"))
+            result = cleanup.clean_cache(["daemon", "pipe"])
+        self.assertTrue(with_socket.exists())
+        self.assertTrue(with_fifo.exists())
+        self.assertEqual(result["skippedNames"], ["daemon", "pipe"])
+
+    def test_a_mount_inside_a_marked_folder_is_skipped(self):
+        folder = self.folder("uv")
+        (self.proc / "self/mountinfo").write_text(f"36 35 98:0 / {folder}/remote rw - fuse.sshfs h rw\n")
+        result = cleanup.clean_cache(["uv"])
+        self.assertTrue(folder.exists())
+        self.assertEqual(result["skippedNames"], ["uv"])
+
+    def test_undecodable_names_are_not_offered(self):
+        self.folder("uv")
+        bad = os.fsencode(str(self.cache)) + b"/bad\xff"
+        try:
+            os.mkdir(bad)
+        except OSError:
+            self.skipTest("this filesystem refuses such names")
+        self.assertEqual(cleanup.cache_folders(self.cache), ["uv"])
 
     def test_a_folder_replaced_by_a_link_is_skipped_and_its_target_stays(self):
         outside = self.write(self.root / "outside/keep", b"keep")
@@ -572,7 +774,7 @@ esac""")
         self.assertEqual(plan["packages"], ["orphan-app"])
         self.assertEqual(plan["names"], ["orphan-app", "unused-library"])
         self.assertEqual(plan["count"], 2)
-        self.assertEqual(plan["bytes"], cleanup.allocated_bytes(one) + cleanup.allocated_bytes(two))
+        self.assertEqual(plan["bytes"], one.lstat().st_blocks * 512 + two.lstat().st_blocks * 512)
         self.assertTrue(plan["revision"])
 
     def test_no_orphans_is_not_an_error(self):
@@ -640,6 +842,25 @@ esac""")
         with self.sized(system_journal=72 * self.MB, user_1000_journal=72 * self.MB):
             self.assertEqual(cleanup.system_plan("journal")["bytes"], 144 * self.MB)
 
+    def test_journal_freed_is_measured_on_the_folder(self):
+        self.journals()
+        plan = cleanup.system_plan("journal")
+        machine = self.journal / "machine"
+        before = sum(cleanup.allocated_bytes(machine / name) for name in ("old.journal", "mid.journal", "system.journal"))
+        self.assertEqual(plan["before"], before)
+        # Rotation renamed everything, removed one file and started a new one.
+        (machine / "old.journal").unlink()
+        os.replace(machine / "system.journal", machine / "system@1.journal")
+        self.write(machine / "system.journal", b"x" * 4096)
+        after = sum(cleanup.allocated_bytes(machine / name) for name in ("mid.journal", "system@1.journal", "system.journal"))
+        self.assertEqual(cleanup.finish_system(plan)["freedBytes"], max(0, before - after))
+
+    def test_a_journal_file_vanishing_during_the_scan_hides_nothing_else(self):
+        self.write(self.cache / "uv/data")
+        with patch.object(cleanup, "journal_plan", side_effect=FileNotFoundError(2, "rotated")):
+            categories = cleanup.list_categories()["categories"]
+        self.assertEqual([item["id"] for item in categories], ["cache"])
+
     def test_finish_counts_what_went_and_what_stayed(self):
         kept = self.write(self.core / "kept", b"x" * 8192)
         gone = self.write(self.core / "gone", b"x" * 8192)
@@ -688,6 +909,11 @@ class Protocol(CleanupCase):
             category = cleanup.scan_temp()
         self.assertEqual(set(category), {"id", "title", "summary", "warning", "bytes", "count", "requiresPassword",
                                          "names", "revision", "rows"})
+
+    def test_a_broken_temp_folder_hides_only_its_row(self):
+        self.write(self.cache / "uv/data")
+        with patch.dict(os.environ, {"OMARCHY_TOOL_CLEANUP_TEMP_DIR": str(self.root / "missing")}):
+            self.assertEqual([item["id"] for item in cleanup.list_categories()["categories"]], ["cache"])
 
     def test_defaults_follow_the_system(self):
         with patch.dict(os.environ, {"OMARCHY_TOOL_CLEANUP_TEMP_DIR": "", "OMARCHY_TOOL_CLEANUP_CACHE_DIR": "",

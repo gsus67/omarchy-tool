@@ -251,7 +251,6 @@
     "Copias de programas que fallaron, guardadas para diagnosticarlos.": "Copies of programs that crashed, kept to diagnose them.",
     "Se pierde la información para diagnosticar esos fallos.": "The information to diagnose those crashes is lost.",
     "Journal": "Journal",
-    "Registros del sistema. Se recortan a 50 MB, borrando primero lo más antiguo.": "System logs. Trimmed to 50 MB, oldest first.",
     "Limpieza manual del sistema": "Manual system cleanup",
     "Limpieza": "Cleanup",
     "Limpieza terminada: se liberaron %1.": "Cleanup finished: %1 freed.",
@@ -270,7 +269,8 @@
     "Confirmar": "Confirm",
     "Volver a la lista": "Back to the list",
     "%1 de %2 marcadas.": "%1 of %2 marked.",
-    "Carpetas menores de 100 MB.": "Folders under 100 MB."
+    "Carpetas menores de 100 MB.": "Folders under 100 MB.",
+    "Registros del sistema. Se borran archivos enteros, desde el más antiguo, hasta quedar bajo 50 MB.": "System logs. Whole files go, oldest first, until under 50 MB."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

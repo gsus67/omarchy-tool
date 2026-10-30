@@ -291,7 +291,8 @@ Column {
             bordered: true
             fontSize: Style.font.bodySmall
             foreground: root.fg
-            enabled: root.tool !== null && !root.tool.busy && (!row.isCache || root.selectedFolders().length > 0)
+            enabled: root.tool !== null && !root.tool.busy && root.activeRead === null && !root.pendingRead
+              && (!row.isCache || root.selectedFolders().length > 0)
             onClicked: root.beginClean(row.modelData.id)
           }
         }

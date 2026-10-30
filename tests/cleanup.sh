@@ -3,7 +3,8 @@
 # Nothing here reaches pacman, the journal or the real coredumps.
 cleanup_root="$work/cleanup"
 cleanup_fake_bin="$cleanup_root/bin"
-mkdir -p "$cleanup_fake_bin" "$cleanup_root/tmp" "$cleanup_root/cache" "$cleanup_root/proc" "$cleanup_root/core" "$cleanup_root/journal" "$cleanup_root/run-journal"
+mkdir -p "$cleanup_fake_bin" "$cleanup_root/tmp" "$cleanup_root/cache" "$cleanup_root/proc/self" "$cleanup_root/core" "$cleanup_root/journal" "$cleanup_root/run-journal"
+: >"$cleanup_root/proc/self/mountinfo"
 cleanup_saved_path=$PATH
 cleanup_saved_priv=$OMARCHY_TOOL_PRIV
 export PATH="$cleanup_fake_bin:$PATH"
@@ -72,8 +73,10 @@ printf x >"$cleanup_root/cache/run-exe.log"
 
 check "cleanup status is constant and always on" '"$tool" status | jq -e ".modules.cleanup.enabled == true and .modules.cleanup.applied == true" >/dev/null'
 check "cleanup is listed and its list works" '"$tool" cleanup list | jq -e "[.categories[].id] == [\"cache\"]" >/dev/null'
-check "apply never scans for cleanup" 'mv "$cleanup_root/cache" "$cleanup_root/cache-away" && "$tool" apply; mv "$cleanup_root/cache-away" "$cleanup_root/cache"; true'
+check "cleanup has nothing that runs by itself" '! grep -Eq "^cleanup_(apply|startup)\b" "$repo/bin/modules/cleanup.sh"'
 check "a cache mark survives another run" '"$tool" cleanup cache-mark "[\"uv\"]" on && [[ $("$tool" cleanup list | jq -c "[.categories[0].rows[].folders[]|select(.marked).name]") == "[\"uv\"]" ]]'
+"$tool" cleanup cache-mark '["uv"]' on
+check "a mark on a folder that is gone can be dropped" 'printf "{\"modules\":{\"cleanup\":{\"cacheMarked\":[\"uv\",\"gone\"]}}}\n" >"$OMARCHY_TOOL_CONFIG_DIR/config.json" && "$tool" cleanup cache-mark "[\"gone\"]" off && [[ $(cleanup_config ".modules.cleanup.cacheMarked") == "[\"uv\"]" ]]'
 check "marking twice keeps one mark" '"$tool" cleanup cache-mark "[\"uv\"]" on && [[ $(cleanup_config ".modules.cleanup.cacheMarked") == "[\"uv\"]" ]]'
 check "names with quotes and spaces survive the config" '"$tool" cleanup cache-mark "[\"con espacio\",\"mi\\\"app\"]" on && [[ $(cleanup_config ".modules.cleanup.cacheMarked|length") == 3 ]] && "$tool" cleanup cache-mark "[\"con espacio\",\"mi\\\"app\"]" off && [[ $(cleanup_config ".modules.cleanup.cacheMarked") == "[\"uv\"]" ]]'
 cleanup_before=$(md5sum <"$OMARCHY_TOOL_CONFIG_DIR/config.json")
@@ -111,7 +114,10 @@ printf '%s\n' "$cleanup_package" >"$cleanup_packages"
 : >"$cleanup_notify_log"
 check "pacman cache uses the fixed command" '"$tool" cleanup clean paccache && [[ $(<"$cleanup_priv_log") == "/usr/bin/paccache -rk3" && ! -e $cleanup_package && $(cleanup_notes) == 1 ]]'
 : >"$cleanup_priv_log"
-check "the journal uses the fixed command" '"$tool" cleanup clean journal && { [[ ! -s $cleanup_priv_log ]] || [[ $(<"$cleanup_priv_log") == "/usr/bin/journalctl --rotate --vacuum-size=50M" ]]; }'
+mkdir -p "$cleanup_root/journal/machine"
+head -c 53000000 /dev/urandom >"$cleanup_root/journal/machine/system.journal"
+check "the journal uses the fixed command" '"$tool" cleanup clean journal && [[ $(<"$cleanup_priv_log") == "/usr/bin/journalctl --rotate --vacuum-size=50M" ]]'
+rm -rf "$cleanup_root/journal/machine"
 printf x >"$cleanup_root/core/core.1"
 : >"$cleanup_priv_log"
 : >"$cleanup_notify_log"

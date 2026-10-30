@@ -32,7 +32,12 @@ cleanup_cache_mark() {
     on | off) ;;
     *) fail "$(tool_text 'usa on u off')" ;;
   esac
-  output=$(cleanup_helper validate-cache "$names") || fail "$(cleanup_error "$output")"
+  if [[ $state == on ]]; then
+    output=$(cleanup_helper validate-cache "$names") || fail "$(cleanup_error "$output")"
+  else
+    # A folder that is gone must still be unmarkable.
+    output=$(cleanup_helper validate-names "$names") || fail "$(cleanup_error "$output")"
+  fi
   names=$(jq -c .names <<<"$output")
   if [[ $state == on ]]; then
     config_update '.modules.cleanup.cacheMarked = (((.modules.cleanup.cacheMarked // []) + $names) | unique)' --argjson names "$names"

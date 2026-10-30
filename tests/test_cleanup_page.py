@@ -251,6 +251,7 @@ class CleanupPage(unittest.TestCase):
         self.assertRegex(panel, r'id: "cleanup", parent: "extras", title: root\.t\("Limpieza"\), '
                                 r'source: "modules/Cleanup\.qml", switchable: false')
         self.assertIn("ToggleSwitch", SOURCE)
+        self.assertIn("root.activeRead === null && !root.pendingRead", SOURCE, "Limpiar looks unavailable while reading")
         self.assertIn("StdioCollector", SOURCE)
         self.assertNotIn("Timer {", SOURCE)
         self.assertNotIn("status.enabled", SOURCE)
