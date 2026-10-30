@@ -245,7 +245,8 @@ Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
 ### Copias de Proton
 
-Una entrada propia en **Omarchy › Extras**, sin interruptor. Copia a un archivo lo
+Una entrada propia en **Omarchy › Extras**. Su interruptor es la copia automática;
+un clic en su nombre abre la página. Copia a un archivo lo
 que los programas de Windows guardan en el prefijo de Proton, y lo restaura después.
 Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exista.
 
@@ -268,7 +269,9 @@ Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exist
   (`0700`/`0600`); los discos sin permisos Unix, como NTFS, no pueden garantizarlo,
   y un disco compartido con la VM de Windows las deja visibles allí. `AppData` puede
   contener sesiones de programas.
-- **Copia automática al encender:** apagada hasta que la actives. Se hace una vez al
+- **Copia automática al encender:** el interruptor de la entrada en Extras, apagado
+  hasta que lo actives. Necesita una carpeta elegida: sin ella, al activarlo sale un
+  aviso en rojo y sigue apagado. Entra en la entrada, pulsa **Aplicar** y actívalo. Se hace una vez al
   iniciar el shell de Omarchy, desde el paso de arranque que el plugin ya tiene: sin
   servicios, temporizadores ni procesos en segundo plano. Crea `automatica-…` solo
   si algo cambió, se omite con Proton abierto y avisa si falta el disco. Se conservan
@@ -387,8 +390,8 @@ omarchy-tool exe-proton saves-list                # JSON: lo que tendría una co
 omarchy-tool exe-proton saves-preview NOMBRE      # JSON: lo que contiene una copia
 omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NOMBRE
-omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto
-omarchy-tool exe-proton saves-auto on|off
+omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto y apaga la copia automática
+omarchy-tool proton-saves enable|disable          # la copia automática; necesita carpeta elegida
 omarchy-tool cleanup list                         # JSON: qué se puede limpiar
 omarchy-tool cleanup cache-mark '["uv"]' on|off
 omarchy-tool cleanup clean tmp|paccache|coredumps|journal

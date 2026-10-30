@@ -207,7 +207,6 @@
     "No hay nada que guardar.": "There's nothing to save.",
     "Guardar": "Save",
     "Carpeta de copias": "Copies folder",
-    "Copia automática al encender": "Automatic copy at startup",
     "Copias:": "Copies:",
     "Todavía no hay copias.": "No copies yet.",
     "Ver": "View",
@@ -270,7 +269,12 @@
     "Volver a la lista": "Back to the list",
     "%1 de %2 marcadas.": "%1 of %2 marked.",
     "Carpetas menores de 100 MB.": "Folders under 100 MB.",
-    "Registros del sistema. Se borran archivos enteros, desde el más antiguo, hasta quedar bajo 50 MB.": "System logs. Whole files go, oldest first, until under 50 MB."
+    "Registros del sistema. Se borran archivos enteros, desde el más antiguo, hasta quedar bajo 50 MB.": "System logs. Whole files go, oldest first, until under 50 MB.",
+    "Primero elige la carpeta donde se guardarán las copias: entra en Copias de Proton y pulsa Aplicar.": "First choose the folder for the copies: go into Proton saves and press Apply.",
+    "Copia automática activada.": "Automatic copy turned on.",
+    "Copia automática desactivada.": "Automatic copy turned off.",
+    "Pulsa Aplicar para elegir esta carpeta. Hace falta para activar la copia automática en Extras.": "Press Apply to choose this folder. Turning on the automatic copy in Extras needs it.",
+    "Carpeta de copias guardada.": "Copies folder saved."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
