@@ -178,7 +178,12 @@
     "nombre de copia no válido": "invalid copy name",
     "no se pudo abrir la copia": "could not open the copy",
     "la copia contiene rutas no permitidas": "the copy contains paths that aren't allowed",
-    "la copia está dañada": "the copy is damaged"
+    "la copia está dañada": "the copy is damaged",
+    "no se pudo comprobar si Proton está abierto": "could not check whether Proton is open",
+    "ya existe una copia de este segundo; inténtalo de nuevo": "a copy from this same second already exists; try again",
+    "no se pudo guardar la copia": "could not save the copy",
+    "cierra Proton antes de guardar o cargar": "close Proton before saving or loading",
+    "todavía no existe el prefijo de Proton; abre antes un programa con Proton": "the Proton prefix doesn't exist yet; open a program with Proton first"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

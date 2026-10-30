@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Whole copies of what Windows programs keep in the Proton prefix.
 
-Usage: exe-proton-saves.py list | preview NAME
+Usage: exe-proton-saves.py list | preview NAME | save
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
 from compression import zstd
+from datetime import datetime
+import errno
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -13,6 +15,7 @@ import re
 import stat
 import sys
 import tarfile
+import tempfile
 
 USER_DIRECTORY = "drive_c/users/steamuser"
 ROOTS = ("Documents", "Saved Games", "AppData/Local", "AppData/LocalLow", "AppData/Roaming")
@@ -20,6 +23,7 @@ ROOTS = ("Documents", "Saved Games", "AppData/Local", "AppData/LocalLow", "AppDa
 EXCLUDED = ("AppData/Local/dxvk", "AppData/Local/Temp", "AppData/Local/Microsoft",
             "AppData/Local/Programs", "AppData/Local/openvr", "AppData/Roaming/Microsoft")
 COPY_NAME = re.compile(r"^(partidas|automatica|antes-de-cargar)-\d{8}-\d{6}\.tar\.zst$")
+PROC_DIRECTORY = Path("/proc")
 
 
 class SavesError(Exception):
@@ -191,12 +195,108 @@ def preview_copy(name):
     return {"name": name, "groups": group_entries((member.name, member.size) for member in members)}
 
 
+def proton_open():
+    """Whether any wineserver runs. Tests set the override; "" means closed."""
+    override = os.environ.get("OMARCHY_TOOL_WINESERVER_PID")
+    if override is not None:
+        return bool(override)
+    try:
+        processes = [entry for entry in os.listdir(PROC_DIRECTORY) if entry.isdigit()]
+    except OSError as error:
+        raise SavesError("no se pudo comprobar si Proton está abierto") from error
+    for pid in processes:
+        try:
+            command = (PROC_DIRECTORY / pid / "comm").read_text(errors="replace").strip()
+        except OSError:
+            continue  # It ended while looking.
+        if command in ("wineserver", "wineserver64"):
+            return True
+    return False
+
+
+def private_directory(copies):
+    copies.mkdir(parents=True, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(copies, 0o700)
+    except OSError as error:
+        # Disks without Unix permissions, like NTFS, can't make it private.
+        if error.errno not in (errno.EPERM, errno.ENOTSUP):
+            raise
+
+
+def add_member(archive, user, name):
+    """Add one inventory entry by what it is now, never following a link."""
+    path = user / name
+    info = tarfile.TarInfo(name)
+    status = os.lstat(path)
+    info.mtime = int(status.st_mtime)
+    info.mode = stat.S_IMODE(status.st_mode)
+    if stat.S_ISDIR(status.st_mode):
+        info.type = tarfile.DIRTYPE
+        archive.addfile(info)
+    elif stat.S_ISREG(status.st_mode):
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC), "rb") as source:
+            info.size = os.fstat(source.fileno()).st_size
+            archive.addfile(info, source)
+
+
+def publish(temporary, final):
+    """Give the finished archive its name without ever replacing another copy."""
+    try:
+        os.link(temporary, final)
+    except FileExistsError as error:
+        raise SavesError("ya existe una copia de este segundo; inténtalo de nuevo") from error
+    except OSError:
+        # No hard links on this disk. The tool's lock keeps other writers out.
+        if final.exists():
+            raise SavesError("ya existe una copia de este segundo; inténtalo de nuevo") from None
+        os.rename(temporary, final)
+
+
+def write_copy(prefix, copies, kind, now=None):
+    """Write a complete archive under its timestamped name, or leave nothing behind."""
+    name = f"{kind}-{(now or datetime.now()).strftime('%Y%m%d-%H%M%S')}.tar.zst"
+    user = prefix / USER_DIRECTORY
+    temporary = None
+    try:
+        private_directory(copies)
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{kind}-", suffix=".tmp", dir=copies)
+        with os.fdopen(descriptor, "wb") as output:
+            with tarfile.open(fileobj=output, mode="w:zst") as archive:
+                for member, _ in scan_prefix(prefix):
+                    add_member(archive, user, member)
+            output.flush()
+            os.fsync(output.fileno())
+        publish(temporary, copies / name)
+    except (OSError, tarfile.TarError, zstd.ZstdError) as error:
+        raise SavesError("no se pudo guardar la copia") from error
+    finally:
+        if temporary:
+            Path(temporary).unlink(missing_ok=True)
+    return name
+
+
+def require_closed_prefix(prefix):
+    if proton_open():
+        raise SavesError("cierra Proton antes de guardar o cargar")
+    if not (prefix / USER_DIRECTORY).is_dir():
+        raise SavesError("todavía no existe el prefijo de Proton; abre antes un programa con Proton")
+
+
+def save_copy():
+    prefix, copies = locations()
+    require_closed_prefix(prefix)
+    return {"name": write_copy(prefix, copies, "partidas")}
+
+
 def main(argv):
     try:
         if argv == ["list"]:
             result = list_saves()
         elif len(argv) == 2 and argv[0] == "preview":
             result = preview_copy(argv[1])
+        elif argv == ["save"]:
+            result = save_copy()
         else:
             raise SavesError("acción de copias no válida")
     except SavesError as error:

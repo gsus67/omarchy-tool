@@ -1,9 +1,11 @@
 """Proton save copies: inventory, archive safety, saving and loading, all in a temporary prefix."""
 import importlib.util
+from datetime import datetime
 import io
 import os
 from pathlib import Path
 import random
+import shutil
 import tarfile
 import tempfile
 import unittest
@@ -234,6 +236,108 @@ class ArchiveSafety(ProtonSaves):
             with self.subTest(name=name):
                 with self.assertRaises(saves.SavesError):
                     saves.preview_copy(name)
+
+
+class Saving(ProtonSaves):
+    def members(self, name):
+        with tarfile.open(self.copies / name, "r:zst") as archive:
+            return {member.name: member for member in archive}
+
+    def test_save_uses_native_zstandard_and_private_modes(self):
+        self.put("Saved Games/Game/slot", b"123")
+        result = saves.save_copy()
+        self.assertRegex(result["name"], r"^partidas-\d{8}-\d{6}\.tar\.zst$")
+        self.assertEqual(self.copies.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.copies / result["name"]).stat().st_mode & 0o777, 0o600)
+        self.assertEqual(saves.preview_copy(result["name"])["groups"], saves.list_saves()["groups"])
+
+    def test_saved_members_are_exactly_the_inventory_without_links(self):
+        slot = self.put("Saved Games/Game/slot", b"123")
+        os.link(slot, self.root / "other-name")
+        self.put("AppData/Local/dxvk/cache", b"cache")
+        (self.user / "Documents/Empty").mkdir(parents=True)
+        (self.user / "Documents/link").symlink_to(self.root)
+        members = self.members(saves.save_copy()["name"])
+        self.assertEqual(set(members), {"Saved Games/Game", "Saved Games/Game/slot", "Documents/Empty"})
+        self.assertEqual(members["Saved Games/Game/slot"].type, tarfile.REGTYPE)
+        self.assertEqual(members["Saved Games/Game/slot"].uid, 0)
+        self.assertEqual(members["Saved Games/Game/slot"].uname, "")
+
+    def test_existing_permissive_copies_directory_becomes_private(self):
+        self.copies.mkdir(mode=0o755)
+        os.chmod(self.copies, 0o755)
+        self.put("Saved Games/Game/slot")
+        saves.save_copy()
+        self.assertEqual(self.copies.stat().st_mode & 0o777, 0o700)
+
+    def test_open_proton_refuses_save_without_creating_copies(self):
+        self.put("Saved Games/Game/slot")
+        with patch.dict(os.environ, {"OMARCHY_TOOL_WINESERVER_PID": "4242"}):
+            with self.assertRaises(saves.SavesError) as caught:
+                saves.save_copy()
+        self.assertEqual(caught.exception.source, "cierra Proton antes de guardar o cargar")
+        self.assertFalse(self.copies.exists())
+
+    def test_missing_prefix_refuses_save(self):
+        with patch.dict(os.environ, {"WINEPREFIX": str(self.root / "missing")}):
+            with self.assertRaises(saves.SavesError):
+                saves.save_copy()
+        self.assertFalse(self.copies.exists())
+
+    def test_failed_write_publishes_no_partial_archive(self):
+        self.put("Saved Games/Game/slot")
+        before = self.tree(self.prefix)
+        with patch.object(tarfile.TarFile, "addfile", side_effect=OSError("disk full")):
+            with self.assertRaises(saves.SavesError):
+                saves.save_copy()
+        self.assertEqual(list(self.copies.iterdir()), [])
+        self.assertEqual(self.tree(self.prefix), before)
+
+    def test_same_second_never_overwrites_an_existing_copy(self):
+        self.put("Saved Games/Game/slot", b"first")
+        fixed = datetime(2026, 10, 30, 8, 45, 0)
+        name = saves.write_copy(self.prefix, self.copies, "partidas", fixed)
+        before = (self.copies / name).read_bytes()
+        self.put("Saved Games/Game/slot", b"second")
+        with self.assertRaises(saves.SavesError) as caught:
+            saves.write_copy(self.prefix, self.copies, "partidas", fixed)
+        self.assertEqual(caught.exception.source, "ya existe una copia de este segundo; inténtalo de nuevo")
+        self.assertEqual((self.copies / name).read_bytes(), before)
+        self.assertEqual(len(list(self.copies.iterdir())), 1)
+
+    def test_publishing_works_where_hard_links_do_not(self):
+        self.put("Saved Games/Game/slot")
+        with patch.object(saves.os, "link", side_effect=OSError(1, "not permitted")):
+            name = saves.save_copy()["name"]
+        self.assertEqual(saves.preview_copy(name)["name"], name)
+
+    def fake_proc(self, processes):
+        proc = self.root / "proc"
+        for pid, command in processes.items():
+            (proc / pid).mkdir(parents=True)
+            (proc / pid / "comm").write_text(command + "\n")
+        (proc / "self").mkdir(parents=True, exist_ok=True)
+        (proc / "99").mkdir()  # A process that vanished: no comm.
+        return proc
+
+    def test_real_probe_finds_wineserver_only(self):
+        environment = {k: v for k, v in os.environ.items() if k != "OMARCHY_TOOL_WINESERVER_PID"}
+        with patch.dict(os.environ, environment, clear=True):
+            with patch.object(saves, "PROC_DIRECTORY", self.fake_proc({"10": "bash", "11": "wineserver-tool"})):
+                self.assertFalse(saves.proton_open())
+        for command in ("wineserver", "wineserver64"):
+            shutil.rmtree(self.root / "proc")
+            with patch.dict(os.environ, environment, clear=True):
+                with patch.object(saves, "PROC_DIRECTORY", self.fake_proc({"10": command})):
+                    self.assertTrue(saves.proton_open())
+
+    def test_uninspectable_processes_prevent_saving(self):
+        environment = {k: v for k, v in os.environ.items() if k != "OMARCHY_TOOL_WINESERVER_PID"}
+        with patch.dict(os.environ, environment, clear=True):
+            with patch.object(saves, "PROC_DIRECTORY", self.root / "no-proc"):
+                with self.assertRaises(saves.SavesError):
+                    saves.save_copy()
+        self.assertFalse(self.copies.exists())
 
 
 if __name__ == "__main__":
