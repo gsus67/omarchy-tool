@@ -3,9 +3,14 @@
 # needs a folder the user chose. Saving and loading work without it: they are the
 # exe-proton module's saves-* actions, and the copy itself is exe_proton_startup.
 
+# On takes both: a config from before the switch can say automatic with no folder.
+proton_saves_on() {
+  [[ $(config_get '.modules["exe-proton"] | (.savesAuto == true and ((.savesFolder // "") != ""))') == true ]]
+}
+
 proton_saves_status() {
   local enabled=false
-  [[ $(config_get '.modules["exe-proton"].savesAuto // false') == true ]] && enabled=true
+  proton_saves_on && enabled=true
   jq -n --argjson enabled "$enabled" \
     '{enabled: $enabled, applied: true, summary: (if $enabled then "Activado" else "Desactivado" end)}'
 }

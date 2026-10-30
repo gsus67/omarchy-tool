@@ -245,7 +245,8 @@ Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
 ### Copias de Proton
 
-Una entrada propia en **Omarchy › Extras**, sin interruptor. Copia a un archivo lo
+Una entrada propia en **Omarchy › Extras**. Su interruptor es la copia automática;
+un clic en su nombre abre la página. Copia a un archivo lo
 que los programas de Windows guardan en el prefijo de Proton, y lo restaura después.
 Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exista.
 
@@ -355,7 +356,7 @@ omarchy-tool exe-proton saves-list                # JSON: lo que tendría una co
 omarchy-tool exe-proton saves-preview NOMBRE      # JSON: lo que contiene una copia
 omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NOMBRE
-omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto
+omarchy-tool exe-proton saves-folder /mnt/datos   # "" vuelve a la carpeta por defecto y apaga la copia automática
 omarchy-tool proton-saves enable|disable          # la copia automática; necesita carpeta elegida
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adaptador a DHCP

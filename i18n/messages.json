@@ -221,7 +221,8 @@
     "Primero elige la carpeta donde se guardarán las copias: entra en Copias de Proton y pulsa Aplicar.": "First choose the folder for the copies: go into Proton saves and press Apply.",
     "Copia automática activada.": "Automatic copy turned on.",
     "Copia automática desactivada.": "Automatic copy turned off.",
-    "Pulsa Aplicar para elegir esta carpeta. Hace falta para activar la copia automática en Extras.": "Press Apply to choose this folder. Turning on the automatic copy in Extras needs it."
+    "Pulsa Aplicar para elegir esta carpeta. Hace falta para activar la copia automática en Extras.": "Press Apply to choose this folder. Turning on the automatic copy in Extras needs it.",
+    "Carpeta de copias guardada.": "Copies folder saved."
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

@@ -253,7 +253,8 @@ XDG data/cache locations and umu's `UMU_FOLDERS_PATH` are respected.
 
 ### Proton saves
 
-An entry of its own under **Omarchy › Extras**, with no switch. It copies what
+An entry of its own under **Omarchy › Extras**. Its switch is the automatic copy;
+clicking its name opens the page. It copies what
 Windows programs keep in the Proton prefix to one archive and restores it later.
 It works with **Open .exe with Proton** off, as long as the prefix exists.
 
@@ -359,7 +360,7 @@ omarchy-tool exe-proton saves-list                # JSON: what a copy would hold
 omarchy-tool exe-proton saves-preview NAME        # JSON: what a copy contains
 omarchy-tool exe-proton saves-save
 omarchy-tool exe-proton saves-load NAME
-omarchy-tool exe-proton saves-folder /mnt/datos   # "" goes back to the default
+omarchy-tool exe-proton saves-folder /mnt/datos   # "" goes back to the default, and turns the automatic copy off
 omarchy-tool proton-saves enable|disable          # the automatic copy; needs a chosen folder
 omarchy-tool network-ip enable|disable
 omarchy-tool network-ip dhcp enp6s0              # adapter back to DHCP

@@ -182,32 +182,9 @@ Column {
   }
 
   Column {
-    visible: root.listing.prefixExists === true
+    visible: root.listed
     width: parent.width
     spacing: Style.space(6)
-
-    PanelSeparator { foreground: root.fg }
-
-    Text {
-      textFormat: Text.PlainText
-      text: root.listing.groups && root.listing.groups.length > 0 ? root.t("Guardar incluirá:") : root.t("No hay nada que guardar.")
-      color: Qt.darker(root.fg, 1.5)
-      font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-      width: parent.width
-    }
-
-    GroupList {
-      model: root.listing.groups || []
-    }
-
-    Button {
-      text: root.t("Guardar")
-      bordered: true
-      foreground: root.fg
-      enabled: root.canChange && root.listing.groups && root.listing.groups.length > 0
-      onClicked: root.saveData()
-    }
 
     PanelSeparator { foreground: root.fg }
 
@@ -264,6 +241,35 @@ Column {
       font.pixelSize: Style.font.bodySmall
       wrapMode: Text.Wrap
       width: parent.width
+    }
+  }
+
+  Column {
+    visible: root.listing.prefixExists === true
+    width: parent.width
+    spacing: Style.space(6)
+
+    PanelSeparator { foreground: root.fg }
+
+    Text {
+      textFormat: Text.PlainText
+      text: root.listing.groups && root.listing.groups.length > 0 ? root.t("Guardar incluirá:") : root.t("No hay nada que guardar.")
+      color: Qt.darker(root.fg, 1.5)
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      width: parent.width
+    }
+
+    GroupList {
+      model: root.listing.groups || []
+    }
+
+    Button {
+      text: root.t("Guardar")
+      bordered: true
+      foreground: root.fg
+      enabled: root.canChange && root.listing.groups && root.listing.groups.length > 0
+      onClicked: root.saveData()
     }
 
     PanelSeparator { foreground: root.fg }

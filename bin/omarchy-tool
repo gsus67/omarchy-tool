@@ -437,7 +437,9 @@ main() {
           OPERATION_TITLE=$(operation_title "$command")
           OPERATION_ERROR=''
           trap 'operation_done "$?"' EXIT
-          if [[ $action == disable || $action == off ]]; then
+          if [[ $command == proton-saves ]]; then
+            : # Just a setting: operation_done says how it went.
+          elif [[ $action == disable || $action == off ]]; then
             operation_notice normal "$(tool_text 'Desactivando %1 y retirando sus cambios…' "$OPERATION_TITLE")"
           else
             operation_notice normal "$(tool_text 'Preparando y activando %1…' "$OPERATION_TITLE")"

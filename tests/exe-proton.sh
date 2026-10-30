@@ -259,6 +259,28 @@ check "emptying the folder returns to the default and turns the switch off" '"$t
 : >"$work/notify-all.log"
 check "the switch turns off, copies stay" '"$tool" proton-saves disable && [[ $("$tool" exe-proton saves-list | jq -r .auto) == false && -n $(find "$saves_dir" -name "automatica-*") ]] && grep -qF "Copia automática desactivada." "$work/notify-all.log"'
 
+# A config from before the switch: automatic on, but no folder ever chosen.
+mv "$OMARCHY_TOOL_CONFIG_DIR/config.json" "$work/config-before-old"
+printf '{"modules":{"exe-proton":{"savesAuto":true}}}\n' >"$OMARCHY_TOOL_CONFIG_DIR/config.json"
+printf 'otra' >"$saves_user/Saved Games/Mi Juego/slot.sav"
+cleanup_automatic=$(find "$saves_dir" -name "automatica-*" | wc -l)
+check "an old config without a folder shows the switch off" '[[ $("$tool" status | jq -r ".modules[\"proton-saves\"].enabled") == false ]]'
+check "an old config without a folder makes no startup copy" '"$tool" apply && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == "$cleanup_automatic" ]]'
+mv "$work/config-before-old" "$OMARCHY_TOOL_CONFIG_DIR/config.json"
+: >"$work/notify-all.log"
+check "applying a folder says so" '"$tool" exe-proton saves-folder "$HOME/Documents" && grep -qF "Carpeta de copias guardada." "$work/notify-all.log"'
+"$tool" proton-saves enable
+: >"$work/notify-all.log"
+check "emptying the folder says the switch went off" '"$tool" exe-proton saves-folder "" && grep -qF "Copia automática desactivada." "$work/notify-all.log"'
+: >"$work/notify-all.log"
+"$tool" exe-proton saves-folder "$HOME/Documents"
+"$tool" proton-saves enable
+: >"$work/notify-all.log"
+check "turning the switch off never talks about removing anything" '"$tool" proton-saves disable && ! grep -qF "retirando" "$work/notify-all.log" && ! grep -qF "Limpieza" "$work/notify-all.log"'
+: >"$work/notify-all.log"
+check "turning it on doesn't announce preparing anything" '"$tool" proton-saves enable && ! grep -qF "Preparando" "$work/notify-all.log"'
+"$tool" proton-saves disable
+
 # Neither switching off nor uninstalling touches a copy.
 saves_sum=$(find "$saves_dir" -type f -exec md5sum {} + | sort)
 "$tool" exe-proton enable

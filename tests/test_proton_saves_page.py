@@ -202,6 +202,42 @@ class ProtonSavesPage(unittest.TestCase):
           assert.equal(root.areaLabel('AppData'), 'AppData');
         """)
 
+    def test_the_folder_can_be_chosen_before_any_program_ran(self):
+        section = SOURCE[:SOURCE.index('visible: root.listing.prefixExists === true')]
+        self.assertIn('root.t("Carpeta de copias")', section)
+
+    def test_opening_a_page_clears_the_last_failure(self):
+        panel = (ROOT / "ToolPanel.qml").read_text()
+        program = """
+const assert = require('node:assert/strict');
+const root = {error: 'x', feedback: 'No se pudo completar', current: null, cursorIndex: 0};
+""" + function(panel, "openModule") + """
+root.openModule({id: 'proton-saves'});
+assert.equal(root.error, '');
+assert.equal(root.feedback, '');
+"""
+        result = subprocess.run([shutil.which("node"), "-e", program], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_the_switch_start_message_promises_nothing_wrong(self):
+        panel = (ROOT / "ToolPanel.qml").read_text()
+        functions = function(panel, "pump") + function(panel, "actionTitle") + function(panel, "isSwitch")
+        program = """
+const assert = require('node:assert/strict');
+const actionProc = {running: false, command: []};
+const root = {t: s => s, modules: [{id: 'proton-saves', title: 'Copias de Proton'}], toolPath: '/x', actionProc,
+  pendingFeedback: null, queue: [['proton-saves', 'disable']], busy: false, activeAction: [], feedback: ''};
+""" + functions + """
+root.pump();
+assert.equal(root.feedback, 'Copia automática desactivada.');
+actionProc.running = false;
+root.queue = [['proton-saves', 'enable']];
+root.pump();
+assert.equal(root.feedback, 'Copia automática activada.');
+"""
+        result = subprocess.run([shutil.which("node"), "-e", program], capture_output=True, text=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_the_switch_lives_in_extras_not_on_the_page(self):
         self.assertNotIn("saves-auto", SOURCE)
         self.assertNotIn("setAuto", SOURCE)

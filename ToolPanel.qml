@@ -102,6 +102,7 @@ Panel {
 
   function openModule(module) {
     error = ""
+    feedback = ""
     current = module
     cursorIndex = -1
   }
@@ -180,7 +181,9 @@ Panel {
     queue = queue.slice(1)
     busy = true
     activeAction = next
-    if (root.isSwitch(next)) {
+    if (next[0] === "proton-saves") {
+      feedback = root.t(next[1] === "disable" ? "Copia automática desactivada." : "Copia automática activada.")
+    } else if (root.isSwitch(next)) {
       feedback = root.t(next[1] === "disable" || next[1] === "off"
         ? "Desactivando %1 y retirando sus cambios…" : "Preparando y activando %1…").replace("%1", root.actionTitle(next))
     }
