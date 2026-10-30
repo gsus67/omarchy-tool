@@ -50,7 +50,7 @@ El plugin añade una entrada **Omarchy Tool** al menú de Omarchy (si tienes
 - **Desactivar una función** borra todo lo que esa función escribió en el
   sistema. Solo se recuerda tu elección (por ejemplo, qué discos marcaste).
   Proton conserva siempre el prefijo Wine, con los programas y partidas guardadas,
-  y todas las copias hechas con **Partidas y datos**.
+  y todas las copias hechas con **Copias de Proton**.
 - **Eliminar el plugin** deja el sistema como estaba: quita los discos de la
   configuración de Windows (pide tu contraseña) y borra la configuración del
   plugin y la entrada del menú. Como `omarchy plugin remove` no ejecuta código
@@ -243,11 +243,11 @@ manual. El runner respeta `WINEPREFIX`, `GAMEID` y `PROTONPATH`.
 Si quieres borrarlos, elimina tú `~/.local/share/umu/default`.
 Se respetan las rutas XDG de datos/caché y `UMU_FOLDERS_PATH` de umu.
 
-#### Partidas y datos
+### Copias de Proton
 
-La página del módulo copia a un archivo lo que los programas de Windows guardan en
-el prefijo, y lo restaura después. Funciona con el módulo desactivado, siempre que
-el prefijo exista.
+Una entrada propia en **Omarchy › Extras**, sin interruptor. Copia a un archivo lo
+que los programas de Windows guardan en el prefijo de Proton, y lo restaura después.
+Funciona con **Abrir .exe con Proton** desactivado, siempre que el prefijo exista.
 
 - **Qué se copia:** `Documents`, `Saved Games` y `AppData/{Local,LocalLow,Roaming}`
   dentro de `drive_c/users/steamuser`, sin `AppData/Local/{dxvk,Temp,Microsoft,Programs,openvr}`
