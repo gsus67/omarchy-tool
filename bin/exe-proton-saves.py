@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Whole copies of what Windows programs keep in the Proton prefix.
 
-Usage: exe-proton-saves.py list
+Usage: exe-proton-saves.py list | preview NAME
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
+from compression import zstd
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
+import tarfile
 
 USER_DIRECTORY = "drive_c/users/steamuser"
 ROOTS = ("Documents", "Saved Games", "AppData/Local", "AppData/LocalLow", "AppData/Roaming")
@@ -121,10 +123,80 @@ def list_saves():
             "copies": list_copies(copies)}
 
 
+def open_copy(name):
+    """The named copy, opened without following a link. Only generated names are accepted."""
+    if not COPY_NAME.match(name):
+        raise SavesError("nombre de copia no válido")
+    _, copies = locations()
+    try:
+        descriptor = os.open(copies / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as error:
+        raise SavesError("no se pudo abrir la copia") from error
+    copy = os.fdopen(descriptor, "rb")
+    if not stat.S_ISREG(os.fstat(copy.fileno()).st_mode):
+        copy.close()
+        raise SavesError("no se pudo abrir la copia")
+    return copy
+
+
+def allowed_member(member):
+    """Whether a member may exist in a copy: same rules as what scan_prefix produces."""
+    name = member.name
+    if PurePosixPath(name).as_posix() != name or name.startswith("/") or ".." in name.split("/"):
+        return False
+    if member.type == tarfile.DIRTYPE and (name == "AppData" or name in ROOTS):
+        return True
+    if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE):
+        return False
+    return any(name.startswith(root + "/") for root in ROOTS) and not excluded(name)
+
+
+def validated_members(archive):
+    """Every member, once all were checked and all payloads read to the end, or SavesError."""
+    members, seen, files = [], set(), set()
+    try:
+        for member in archive:
+            if not allowed_member(member) or member.name in seen:
+                raise SavesError("la copia contiene rutas no permitidas")
+            seen.add(member.name)
+            if member.type != tarfile.DIRTYPE:
+                files.add(member.name)
+                payload = archive.extractfile(member)
+                remaining = member.size
+                while chunk := payload.read(1 << 20):
+                    remaining -= len(chunk)
+                if remaining:
+                    raise SavesError("la copia está dañada")
+            members.append(member)
+    except (tarfile.TarError, EOFError, OSError, ValueError, zstd.ZstdError) as error:
+        raise SavesError("la copia está dañada") from error
+    if not members:
+        raise SavesError("la copia está dañada")
+    for name in seen:
+        if any(str(parent) in files for parent in PurePosixPath(name).parents):
+            raise SavesError("la copia contiene rutas no permitidas")
+    return members
+
+
+def open_archive(copy):
+    try:
+        return tarfile.open(fileobj=copy, mode="r:zst")
+    except (tarfile.TarError, EOFError, OSError, ValueError, zstd.ZstdError) as error:
+        raise SavesError("la copia está dañada") from error
+
+
+def preview_copy(name):
+    with open_copy(name) as copy, open_archive(copy) as archive:
+        members = validated_members(archive)
+    return {"name": name, "groups": group_entries((member.name, member.size) for member in members)}
+
+
 def main(argv):
     try:
         if argv == ["list"]:
             result = list_saves()
+        elif len(argv) == 2 and argv[0] == "preview":
+            result = preview_copy(argv[1])
         else:
             raise SavesError("acción de copias no válida")
     except SavesError as error:

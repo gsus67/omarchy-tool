@@ -1,7 +1,10 @@
 """Proton save copies: inventory, archive safety, saving and loading, all in a temporary prefix."""
 import importlib.util
+import io
 import os
 from pathlib import Path
+import random
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -148,6 +151,89 @@ class Inventory(ProtonSaves):
         with patch.object(saves.os, "scandir", side_effect=PermissionError("denied")):
             with self.assertRaises(saves.SavesError):
                 saves.list_saves()
+
+
+COPY = "partidas-20261030-084500.tar.zst"
+
+
+def regular(name, data=b"x"):
+    info = tarfile.TarInfo(name)
+    info.size = len(data)
+    return info, data
+
+
+def special(name, kind, linkname=""):
+    info = tarfile.TarInfo(name)
+    info.type = kind
+    info.linkname = linkname
+    return info, b""
+
+
+class ArchiveSafety(ProtonSaves):
+    def make_copy(self, entries, name=COPY):
+        self.copies.mkdir(exist_ok=True)
+        with tarfile.open(self.copies / name, "w:zst") as archive:
+            for info, data in entries:
+                archive.addfile(info, io.BytesIO(data))
+        return name
+
+    def assert_refused(self, name):
+        before = self.tree(self.prefix)
+        with self.assertRaises(saves.SavesError):
+            saves.preview_copy(name)
+        self.assertEqual(self.tree(self.prefix), before)
+        self.assertEqual(self.tree(self.root / "outside"), {})
+
+    def test_preview_matches_grouping_without_extracting(self):
+        name = self.make_copy([regular("Saved Games/God of War/slot", b"123"),
+                               regular("AppData/Local/Tool/a", b"12"), regular("AppData/Roaming/Tool/b", b"1")])
+        before = self.tree(self.prefix)
+        result = saves.preview_copy(name)
+        self.assertEqual(result["name"], name)
+        self.assertEqual(result["groups"], [{"name": "Tool", "area": "AppData", "bytes": 3},
+                                            {"name": "God of War", "area": "Saved Games", "bytes": 3}])
+        self.assertEqual(self.tree(self.prefix), before)
+
+    def test_unsafe_names_reject_the_whole_archive(self):
+        for bad_name in ("../outside", "/tmp/outside", "Documents/../outside", "Documents2/slot",
+                         "AppData/Other/slot", "AppData/slot", "AppData/Local/Temp/slot",
+                         "AppData/Roaming/Microsoft/slot", "Documents", "./Documents/slot"):
+            with self.subTest(name=bad_name):
+                self.assert_refused(self.make_copy([regular("Saved Games/Game/slot"), regular(bad_name)]))
+
+    def test_links_and_devices_reject_the_whole_archive(self):
+        kinds = {"symlink": (tarfile.SYMTYPE, "/etc/passwd"), "hardlink": (tarfile.LNKTYPE, "Saved Games/Game/slot"),
+                 "fifo": (tarfile.FIFOTYPE, ""), "char": (tarfile.CHRTYPE, ""), "block": (tarfile.BLKTYPE, "")}
+        for label, (kind, target) in kinds.items():
+            with self.subTest(kind=label):
+                self.assert_refused(self.make_copy([regular("Saved Games/Game/slot"),
+                                                    special("Documents/bad", kind, target)]))
+
+    def test_duplicates_and_file_child_conflicts_reject_the_whole_archive(self):
+        self.assert_refused(self.make_copy([regular("Documents/a"), regular("Documents/a")]))
+        self.assert_refused(self.make_copy([regular("Documents/a"), regular("Documents/a/b")]))
+        self.assert_refused(self.make_copy([regular("Documents/a/b"), regular("Documents/a")]))
+
+    def test_truncated_late_payload_is_rejected(self):
+        payload = random.Random(1).randbytes(1 << 20)
+        name = self.make_copy([regular("Saved Games/Game/first", b"ok"), regular("Saved Games/Game/big", payload)])
+        path = self.copies / name
+        path.write_bytes(path.read_bytes()[:-(1 << 19)])
+        self.assert_refused(name)
+
+    def test_garbage_is_rejected(self):
+        self.copies.mkdir()
+        (self.copies / COPY).write_bytes(b"not an archive")
+        self.assert_refused(COPY)
+
+    def test_copy_name_cannot_escape_or_follow_a_link(self):
+        real = self.make_copy([regular("Documents/a")])
+        linked = "partidas-20261030-084501.tar.zst"
+        (self.copies / linked).symlink_to(self.copies / real)
+        for name in ("../" + real, "/tmp/" + real, linked, "nada.tar.zst"):
+            with self.subTest(name=name):
+                with self.assertRaises(saves.SavesError):
+                    saves.preview_copy(name)
 
 
 if __name__ == "__main__":

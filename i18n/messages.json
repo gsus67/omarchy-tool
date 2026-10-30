@@ -174,7 +174,11 @@
     "la carpeta de copias no puede ser un enlace": "the copies folder can't be a link",
     "no se pudieron leer los datos de Proton": "could not read the Proton data",
     "no se pudo leer la carpeta de copias": "could not read the copies folder",
-    "acción de copias no válida": "invalid copies action"
+    "acción de copias no válida": "invalid copies action",
+    "nombre de copia no válido": "invalid copy name",
+    "no se pudo abrir la copia": "could not open the copy",
+    "la copia contiene rutas no permitidas": "the copy contains paths that aren't allowed",
+    "la copia está dañada": "the copy is damaged"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
