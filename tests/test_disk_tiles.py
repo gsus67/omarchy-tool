@@ -218,9 +218,7 @@ class DiskTilesLifecycle(unittest.TestCase):
                 self.assertTrue(helper.exists(), "failed cleanup must retain its helper for retry")
 
     def test_tool_switch_and_external_uninstaller_full_lifecycle(self):
-        import shlex
         import subprocess
-        import sys
         commands = self.root / "fake-bin"
         commands.mkdir()
         notice_log = self.root / "notices.log"
@@ -228,17 +226,23 @@ class DiskTilesLifecycle(unittest.TestCase):
         for name, script in {
             "nautilus": "#!/bin/sh\nexit 0\n",
             "pacman": '#!/bin/sh\n[ "${DISK_TILES_TEST_PROBE_FAIL:-0}" != 1 ] || exit 1\nprintf "nautilus 51.1-1\\nnautilus-python 4.2.0-1\\n"\n',
-            "python3": "#!/bin/sh\nif [ \"$1\" = -B ] && [ \"$2\" = -c ]; then exit 0; fi\nexec " + shlex.quote(sys.executable) + ' "$@"\n',
             "omarchy-notification-send": '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DISK_TILES_TEST_NOTICES"\n',
         }.items():
             file = commands / name
             file.write_text(script)
             file.chmod(0o755)
+        # The bindings probe runs sys.executable by absolute path, so a fake
+        # python3 on PATH never sees it; a stub gi package on PYTHONPATH does.
+        stubs = self.root / "gi-stub"
+        (stubs / "gi").mkdir(parents=True)
+        (stubs / "gi" / "__init__.py").write_text("def require_version(namespace, version):\n    pass\n")
+        (stubs / "gi" / "repository.py").write_text("Nautilus = Gtk = Adw = object()\n")
         runtime = self.root / "runtime"
         runtime.mkdir()
         state = self.root / "tool-state"
         config = self.root / "tool-config"
         env = dict(os.environ, PATH=str(commands) + ":" + os.environ["PATH"], LC_ALL="C.UTF-8",
+                   PYTHONPATH=str(stubs),
                    DISK_TILES_TEST_NOTICES=str(notice_log),
                    XDG_RUNTIME_DIR=str(runtime), OMARCHY_TOOL_STATE_DIR=str(state),
                    OMARCHY_TOOL_CONFIG_DIR=str(config), OMARCHY_TOOL_WINDOWS_SHARED=str(self.root / "shared"),
