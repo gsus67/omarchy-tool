@@ -398,8 +398,8 @@ main() {
   # find nothing left to do.
   case "$command:${1:-}" in
     status:* | modules:* | version:* | --version:* | :* | help:* | -h:* | --help:* | self-update:* | uninstall:*) ;;
-    # The Proton page reads these while a long save holds the lock.
-    exe-proton:saves-list | exe-proton:saves-preview) ;;
+    # Their pages read these while a long save or clean holds the lock.
+    exe-proton:saves-list | exe-proton:saves-preview | cleanup:list) ;;
     *)
       exec 8>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-tool.lock"
       flock 8

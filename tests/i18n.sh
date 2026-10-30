@@ -32,6 +32,15 @@ export WINEPREFIX="$work/prefix" OMARCHY_TOOL_PROTON_SAVES_DIR="$work/copies" OM
 [[ $(LC_ALL=C.UTF-8 "$repo/bin/omarchy-tool" exe-proton saves-list | jq -r '.groups[0].name') == "Mi Juego" ]]
 echo 'ok - save errors are translated; user folder names are unchanged'
 
+mkdir -p "$work/cleanup-temp" "$work/cleanup-cache/Mi Caché" "$work/cleanup-proc" "$work/cleanup-core" "$work/cleanup-journal" "$work/cleanup-run"
+printf x >"$work/cleanup-cache/Mi Caché/data"
+export OMARCHY_TOOL_CLEANUP_TEMP_DIR="$work/cleanup-temp" OMARCHY_TOOL_CLEANUP_CACHE_DIR="$work/cleanup-cache" OMARCHY_TOOL_CLEANUP_PROC_DIR="$work/cleanup-proc"
+export OMARCHY_TOOL_CLEANUP_COREDUMP_DIR="$work/cleanup-core" OMARCHY_TOOL_CLEANUP_JOURNAL_DIR="$work/cleanup-journal" OMARCHY_TOOL_CLEANUP_RUNTIME_JOURNAL_DIR="$work/cleanup-run"
+[[ $(LC_ALL=C.UTF-8 "$repo/bin/omarchy-tool" cleanup cache-mark '["../x"]' on 2>&1) == "omarchy-tool: invalid cache folder" ]]
+[[ $(env -u LC_ALL -u LC_MESSAGES LANG=es_MX.UTF-8 "$repo/bin/omarchy-tool" cleanup cache-mark '["../x"]' on 2>&1) == "omarchy-tool: carpeta de caché no válida" ]]
+[[ $(LC_ALL=C.UTF-8 "$repo/bin/omarchy-tool" cleanup list | jq -r '.categories[0].rows[0].folders[0].name') == "Mi Caché" ]]
+echo 'ok - cleanup errors are translated; folder names are unchanged'
+
 for page in "$repo/ToolPanel.qml" "$repo"/modules/*.qml; do
   /usr/lib/qt6/bin/qmlformat "$page" >/dev/null
 done
