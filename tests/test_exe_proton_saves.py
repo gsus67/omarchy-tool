@@ -268,9 +268,9 @@ class Saving(ProtonSaves):
         self.assertEqual(members["Saved Games/Game/slot"].uid, 0)
         self.assertEqual(members["Saved Games/Game/slot"].uname, "")
 
-    def test_existing_permissive_copies_directory_becomes_private(self):
-        self.copies.mkdir(mode=0o711)
-        os.chmod(self.copies, 0o711)
+    def test_existing_copies_directory_gets_exactly_the_private_mode(self):
+        self.copies.mkdir(mode=0o500)
+        os.chmod(self.copies, 0o500)
         self.put("Saved Games/Game/slot")
         saves.save_copy()
         self.assertEqual(self.copies.stat().st_mode & 0o777, 0o700)
