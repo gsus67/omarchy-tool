@@ -36,7 +36,7 @@ ERROR_CACHE = "carpeta de caché no válida"
 CACHE_TITLE = "Caché de programas"
 CACHE_SUMMARY = "Datos que los programas vuelven a crear cuando los necesitan."
 OTHER_TITLE = "Otras"
-OTHER_SUMMARY = "Carpetas menores de 100 MB"
+OTHER_SUMMARY = "Carpetas menores de 100 MB."
 CACHE_FALLBACK = "Datos que este programa guardó para ir más rápido; los vuelve a crear."
 CACHE_SUMMARIES = {
     "chromium": "Se regenera al navegar; la primera carga va más lenta.",
