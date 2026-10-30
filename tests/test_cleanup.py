@@ -300,6 +300,184 @@ class Temporales(CleanupCase):
         self.assertIsNone(cleanup.scan_temp(now=self.now))
 
 
+class Cache(CleanupCase):
+    MB = 1024 * 1024
+
+    def folder(self, name, data=b"x" * 8192):
+        self.write(self.cache / name / "data", data)
+        return self.cache / name
+
+    def mark(self, *names):
+        config = self.root / "config"
+        config.mkdir(exist_ok=True)
+        (config / "config.json").write_text(json.dumps({"modules": {"cleanup": {"cacheMarked": list(names)}}}))
+
+    def sized(self, **sizes):
+        """Pretend folder sizes, so the suite doesn't allocate hundreds of megabytes."""
+        real = cleanup.allocated_bytes
+
+        def fake(path):
+            name = os.path.basename(path)
+            return sizes[name] if name in sizes else real(path)
+
+        return patch.object(cleanup, "allocated_bytes", side_effect=fake)
+
+    def rows(self):
+        return {row["id"]: row for row in cleanup.scan_cache()["rows"]}
+
+    def test_the_boundary_is_100_mb_and_a_real_folder_called_otras_stays_distinct(self):
+        for name in ("uv", "otras", "small"):
+            self.folder(name)
+        with self.sized(uv=100 * self.MB, otras=200 * self.MB, small=100 * self.MB - 1):
+            rows = self.rows()
+        self.assertEqual(set(rows), {"folder:uv", "folder:otras", "otras"})
+        self.assertEqual(rows["folder:uv"]["bytes"], 100 * self.MB)
+        self.assertEqual([folder["name"] for folder in rows["otras"]["folders"]], ["small"])
+        self.assertEqual(rows["folder:otras"]["title"], "otras")
+        self.assertEqual(rows["otras"]["title"], "Otras")
+
+    def test_a_new_small_folder_does_not_inherit_the_group_marks(self):
+        self.folder("marked-small")
+        self.folder("new-small")
+        self.mark("marked-small")
+        folders = {folder["name"]: folder["marked"] for folder in self.rows()["otras"]["folders"]}
+        self.assertEqual(folders, {"marked-small": True, "new-small": False})
+
+    def test_a_folder_keeps_its_mark_when_it_grows_out_of_the_group(self):
+        self.folder("uv")
+        self.mark("uv")
+        with self.sized(uv=100 * self.MB):
+            self.assertTrue(self.rows()["folder:uv"]["folders"][0]["marked"])
+
+    def test_invalid_marks_in_the_config_mean_none(self):
+        self.folder("uv")
+        config = self.root / "config"
+        config.mkdir()
+        for content in ("not json", '{"modules":{"cleanup":{"cacheMarked":"uv"}}}', '{"modules":[]}'):
+            (config / "config.json").write_text(content)
+            self.assertEqual(cleanup.marked_names(), set())
+
+    def test_known_summaries_and_unknown_fallback(self):
+        self.folder("uv")
+        self.folder("rara")
+        with self.sized(uv=100 * self.MB, rara=100 * self.MB):
+            rows = self.rows()
+        self.assertEqual(rows["folder:uv"]["summary"], cleanup.CACHE_SUMMARIES["uv"])
+        self.assertEqual(rows["folder:rara"]["summary"], cleanup.CACHE_FALLBACK)
+
+    def test_known_folders_are_the_ones_in_the_design(self):
+        self.assertEqual(set(cleanup.CACHE_SUMMARIES), {
+            "chromium", "google-chrome", "codex-runtimes", "uv", "mise", "ms-playwright", "mesa_shader_cache",
+            "pnpm", "node-gyp", "electron", "yay", "thumbnails"})
+
+    def test_loose_files_and_links_are_not_folders(self):
+        self.write(self.cache / "run-exe.log")
+        outside = self.write(self.root / "outside/keep", b"keep").parent
+        (self.cache / "linked").symlink_to(outside)
+        self.assertIsNone(cleanup.scan_cache())
+
+    def test_a_linked_cache_root_is_not_scanned(self):
+        real = self.root / "real-cache"
+        self.write(real / "uv/data")
+        link = self.root / "cache-link"
+        link.symlink_to(real)
+        with patch.dict(os.environ, {"OMARCHY_TOOL_CLEANUP_CACHE_DIR": str(link)}):
+            self.assertIsNone(cleanup.scan_cache())
+            with self.assertRaises(cleanup.CleanupError):
+                cleanup.clean_cache(["uv"])
+        self.assertTrue((real / "uv/data").exists())
+
+    def test_names_reject_the_entire_invalid_request(self):
+        keep = self.folder("uv")
+        outside = self.write(self.root / "outside/keep", b"keep").parent
+        (self.cache / "linked").symlink_to(outside)
+        self.write(self.cache / "loose")
+        for names in (["../outside"], ["a/b"], ["a..b"], [""], ["."], ["\0"], ["linked"], ["loose"], ["missing"],
+                      ["uv", "uv"], ["uv", "../outside"], [], [1], "uv", {"uv": 1}, None):
+            with self.subTest(names=names), self.assertRaises(cleanup.CleanupError):
+                cleanup.cache_names(json.dumps(names))
+        with self.assertRaises(cleanup.CleanupError):
+            cleanup.cache_names("not json")
+        self.assertTrue(keep.exists())
+
+    def test_names_with_markup_quotes_and_spaces_are_valid(self):
+        names = ["<b>x", 'a"b', "con espacio", "ñ"]
+        for name in names:
+            self.folder(name)
+        self.assertEqual(cleanup.cache_names(json.dumps(names)), names)
+
+    def test_open_folders_are_skipped_and_loose_files_stay(self):
+        free = self.folder("uv")
+        busy = self.folder("busy")
+        loose = self.write(self.cache / "run-exe.log")
+        self.process(fds=[str(busy / "data")])
+        expected = cleanup.allocated_bytes(free)
+        result = cleanup.clean_cache(["uv", "busy"])
+        self.assertFalse(free.exists())
+        self.assertTrue(busy.exists())
+        self.assertTrue(loose.exists())
+        self.assertEqual(result, {"freedBytes": expected, "skippedCount": 1, "skippedNames": ["busy"]})
+
+    def test_a_folder_replaced_by_a_link_is_skipped_and_its_target_stays(self):
+        outside = self.write(self.root / "outside/keep", b"keep")
+        (self.cache / "swapped").symlink_to(outside.parent)
+        result = cleanup.clean_cache(["swapped"])
+        self.assertEqual(outside.read_bytes(), b"keep")
+        self.assertTrue((self.cache / "swapped").is_symlink())
+        self.assertEqual(result["skippedNames"], ["swapped"])
+
+    def test_a_link_inside_a_folder_goes_without_touching_its_target(self):
+        outside = self.write(self.root / "outside/keep", b"keep")
+        folder = self.folder("uv")
+        (folder / "link").symlink_to(outside.parent)
+        cleanup.clean_cache(["uv"])
+        self.assertFalse(folder.exists())
+        self.assertEqual(outside.read_bytes(), b"keep")
+
+    def test_read_only_folders_can_be_cleaned(self):
+        folder = self.folder("go")
+        os.chmod(folder, 0o500)
+        cleanup.clean_cache(["go"])
+        self.assertFalse(folder.exists())
+
+    def test_a_failure_after_another_folder_went_reports_both(self):
+        first = self.folder("a")
+        second = self.folder("b")
+        expected = cleanup.allocated_bytes(first)
+        real = cleanup.remove_entry
+
+        def fail_on_b(directory, name, identity):
+            if name == "b":
+                raise PermissionError(13, "denied")
+            return real(directory, name, identity)
+
+        with patch.object(cleanup, "remove_entry", side_effect=fail_on_b):
+            result = cleanup.clean_cache(["a", "b"])
+        self.assertFalse(first.exists())
+        self.assertTrue(second.exists())
+        self.assertEqual(result, {"freedBytes": expected, "skippedCount": 1, "skippedNames": ["b"]})
+
+    def test_the_category_adds_everything_up(self):
+        one = self.folder("uv")
+        two = self.folder("mise")
+        category = cleanup.scan_cache()
+        self.assertEqual(category["id"], "cache")
+        self.assertEqual(category["count"], 2)
+        self.assertEqual(category["bytes"], cleanup.allocated_bytes(one) + cleanup.allocated_bytes(two))
+
+    def test_cli_validates_and_cleans(self):
+        folder = self.folder("uv")
+        checked = self.cli("validate-cache", '["uv"]')
+        self.assertEqual(json.loads(checked.stdout), {"names": ["uv"]})
+        refused = self.cli("clean", "cache", '["../x"]')
+        self.assertEqual(refused.returncode, 1)
+        self.assertEqual(json.loads(refused.stdout), {"error": "carpeta de caché no válida"})
+        self.assertTrue(folder.exists())
+        cleaned = self.cli("clean", "cache", '["uv"]')
+        self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
+        self.assertFalse(folder.exists())
+
+
 class Protocol(CleanupCase):
     def test_failure_is_one_json_object(self):
         result = self.cli("unknown")

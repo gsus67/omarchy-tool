@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What the Limpieza page can clean, and cleaning what needs no password.
 
-Usage: cleanup.py list | clean tmp
+Usage: cleanup.py list | validate-cache NAMES_JSON | clean tmp | clean cache NAMES_JSON
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
@@ -14,6 +14,7 @@ import sys
 import time
 
 MINIMUM_AGE = 86400
+GROUP_BELOW = 100 * 1024 * 1024
 DELETED_SUFFIX = " (deleted)"
 
 ERROR_ACTION = "acción de limpieza no válida"
@@ -21,7 +22,28 @@ ERROR_GENERIC = "no se pudo completar la limpieza"
 ERROR_TEMP = "no se pudo abrir la carpeta de temporales"
 TEMP_TITLE = "Temporales (en RAM)"
 TEMP_SUMMARY = "Archivos de programas que ya terminaron. Limpiarlos libera memoria."
-CATALOG_SOURCES = [ERROR_ACTION, ERROR_GENERIC, ERROR_TEMP, TEMP_TITLE, TEMP_SUMMARY]
+ERROR_CACHE = "carpeta de caché no válida"
+CACHE_TITLE = "Caché de programas"
+CACHE_SUMMARY = "Datos que los programas vuelven a crear cuando los necesitan."
+OTHER_TITLE = "Otras"
+OTHER_SUMMARY = "Carpetas menores de 100 MB"
+CACHE_FALLBACK = "Datos que este programa guardó para ir más rápido; los vuelve a crear."
+CACHE_SUMMARIES = {
+    "chromium": "Se regenera al navegar; la primera carga va más lenta.",
+    "google-chrome": "Se regenera al navegar; la primera carga va más lenta.",
+    "codex-runtimes": "Entornos de Codex; se descargan otra vez al usarlo.",
+    "uv": "Paquetes de Python; se descargan otra vez.",
+    "mise": "Descargas de herramientas; se bajan otra vez si hacen falta.",
+    "ms-playwright": "Navegadores de prueba; hay que reinstalarlos para usar Playwright.",
+    "mesa_shader_cache": "Shaders de juegos y programas; se recompilan y pueden dar tirones al principio.",
+    "pnpm": "Paquetes de Node; se descargan otra vez.",
+    "node-gyp": "Cabeceras de Node; se descargan otra vez al compilar.",
+    "electron": "Descargas de Electron; se bajan otra vez si hacen falta.",
+    "yay": "Paquetes compilados de AUR; se recompilan si se reinstalan.",
+    "thumbnails": "Miniaturas de archivos; se crean otra vez al abrir carpetas.",
+}
+CATALOG_SOURCES = [ERROR_ACTION, ERROR_GENERIC, ERROR_TEMP, TEMP_TITLE, TEMP_SUMMARY, ERROR_CACHE, CACHE_TITLE,
+                   CACHE_SUMMARY, OTHER_TITLE, OTHER_SUMMARY, CACHE_FALLBACK, *CACHE_SUMMARIES.values()]
 
 
 class CleanupError(Exception):
@@ -264,8 +286,92 @@ def clean_temp(now=None):
     return result
 
 
+def marked_names():
+    """Folders the user marked; a config that isn't what it should be means none."""
+    directory = os.environ.get("OMARCHY_TOOL_CONFIG_DIR") or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "omarchy-tool"
+    try:
+        marked = json.loads((Path(directory) / "config.json").read_text())["modules"]["cleanup"]["cacheMarked"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
+    return {name for name in marked if isinstance(name, str)} if isinstance(marked, list) else set()
+
+
+def cache_folders(cache):
+    """Direct, real folders of the cache; loose files and links are not ours to clean."""
+    if os.path.islink(cache):
+        return []
+    try:
+        with os.scandir(cache) as listing:
+            return sorted(entry.name for entry in listing if entry.is_dir(follow_symlinks=False))
+    except OSError:
+        return []
+
+
+def scan_cache():
+    cache = locations()["cache"]
+    marked = marked_names()
+    rows, small = [], []
+    for name in cache_folders(cache):
+        size = allocated_bytes(cache / name)
+        folder = {"name": name, "bytes": size, "marked": name in marked}
+        if size >= GROUP_BELOW:
+            rows.append({"id": "folder:" + name, "title": name, "summary": CACHE_SUMMARIES.get(name, CACHE_FALLBACK),
+                         "bytes": size, "folders": [folder]})
+        else:
+            small.append(folder)
+    rows.sort(key=lambda row: (-row["bytes"], row["title"]))
+    if small:
+        rows.append({"id": "otras", "title": OTHER_TITLE, "summary": OTHER_SUMMARY,
+                     "bytes": sum(folder["bytes"] for folder in small), "folders": small})
+    if not rows:
+        return None
+    count = sum(len(row["folders"]) for row in rows)
+    return category("cache", CACHE_TITLE, CACHE_SUMMARY, sum(row["bytes"] for row in rows), count, rows=rows)
+
+
+def cache_names(value):
+    """The names asked for, only if every one is a real direct folder of the cache."""
+    try:
+        names = json.loads(value)
+    except ValueError as error:
+        raise CleanupError(ERROR_CACHE) from error
+    if not isinstance(names, list) or not names or len(set(map(str, names))) != len(names):
+        raise CleanupError(ERROR_CACHE)
+    existing = set(cache_folders(locations()["cache"]))
+    for name in names:
+        if (not isinstance(name, str) or not name or "/" in name or ".." in name or "\0" in name or name == "."
+                or name not in existing):
+            raise CleanupError(ERROR_CACHE)
+    return names
+
+
+def clean_cache(names):
+    places = locations()
+    cache = places["cache"]
+    result = new_result()
+    try:
+        directory = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as error:
+        raise CleanupError(ERROR_CACHE) from error
+    try:
+        for name in names:
+            try:
+                status = os.lstat(name, dir_fd=directory)
+            except OSError:
+                status = None
+            if (status is None or not stat.S_ISDIR(status.st_mode)
+                    or is_in_use(os.path.join(cache, name), places["proc"])):
+                result["skippedCount"] += 1
+                result["skippedNames"].append(name)
+                continue
+            remove_counted(directory, str(cache), name, (status.st_dev, status.st_ino), result)
+    finally:
+        os.close(directory)
+    return result
+
+
 def list_categories():
-    found = [scan_temp()]
+    found = [scan_temp(), scan_cache()]
     return {"categories": [item for item in found if item]}
 
 
@@ -275,6 +381,10 @@ def main(argv):
             result = list_categories()
         elif argv == ["clean", "tmp"]:
             result = clean_temp()
+        elif len(argv) == 2 and argv[0] == "validate-cache":
+            result = {"names": cache_names(argv[1])}
+        elif len(argv) == 3 and argv[:2] == ["clean", "cache"]:
+            result = clean_cache(cache_names(argv[2]))
         else:
             raise CleanupError(ERROR_ACTION)
     except CleanupError as error:
