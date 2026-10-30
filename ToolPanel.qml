@@ -62,6 +62,7 @@ Panel {
     { id: "exe-icons", parent: "extras", title: root.t("Iconos de .exe"), source: "modules/ExeIcons.qml" },
     { id: "exe-proton", parent: "extras", title: root.t("Abrir .exe con Proton"), source: "modules/ExeProton.qml" },
     { id: "proton-saves", parent: "extras", title: root.t("Copias de Proton"), source: "modules/ProtonSaves.qml" },
+    { id: "cleanup", parent: "extras", title: root.t("Limpieza"), source: "modules/Cleanup.qml", switchable: false },
     { id: "network-ip", parent: "extras", title: root.t("Red por adaptador"), source: "modules/NetworkIp.qml" },
     { id: "plugins", group: "Omarchy", title: root.t("Plugins"), source: "modules/Plugins.qml", switchable: false }
   ]
