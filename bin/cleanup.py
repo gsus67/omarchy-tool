@@ -265,9 +265,9 @@ def new_result():
     return {"freedBytes": 0, "skippedCount": 0, "skippedNames": []}
 
 
-def category(identifier, title, summary, size, count, warning="", password=False, names=None, revision="", rows=None):
+def category(identifier, title, summary, size, count, warning="", root=False, names=None, revision="", rows=None):
     return {"id": identifier, "title": title, "summary": summary, "warning": warning, "bytes": size, "count": count,
-            "requiresPassword": password, "names": names or [], "revision": revision, "rows": rows or []}
+            "needsRoot": root, "names": names or [], "revision": revision, "rows": rows or []}
 
 
 def temp_state(path, status, now, device):
@@ -629,7 +629,7 @@ def scan_system(identifier):
     if not plan["count"]:
         return None
     title, summary, warning = SYSTEM[identifier]
-    return category(identifier, title, summary, plan["bytes"], plan["count"], warning=warning, password=True,
+    return category(identifier, title, summary, plan["bytes"], plan["count"], warning=warning, root=True,
                     names=plan["names"], revision=plan["revision"])
 
 

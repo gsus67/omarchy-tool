@@ -20,16 +20,16 @@ const tool = {toolPath: '/fake/tool', busy: false, language: 'es', t: s => s, ru
 const root = {tool, t: s => s, readProc, listing: {categories: []}, listed: false, readError: '', readGeneration: 0,
   activeRead: null, pendingRead: false, readOutput: null, readExit: null, cacheView: false, confirmation: null};
 const folder = (name, bytes, marked) => ({name, bytes, marked});
-const cache = {id: 'cache', title: 'Caché', summary: 's', warning: '', bytes: 600, count: 3, requiresPassword: false,
+const cache = {id: 'cache', title: 'Caché', summary: 's', warning: '', bytes: 600, count: 3, needsRoot: false,
   names: [], revision: '', rows: [
     {id: 'folder:uv', title: 'uv', summary: 's', bytes: 200, folders: [folder('uv', 200, true)]},
     {id: 'folder:otras', title: 'otras', summary: 's', bytes: 300, folders: [folder('otras', 300, false)]},
     {id: 'otras', title: 'Otras', summary: 's', bytes: 100, folders: [folder('a', 60, true), folder('b', 40, false)]}]};
-const tmp = {id: 'tmp', title: 'T', summary: 's', warning: '', bytes: 10, count: 1, requiresPassword: false, names: [],
+const tmp = {id: 'tmp', title: 'T', summary: 's', warning: '', bytes: 10, count: 1, needsRoot: false, names: [],
   revision: '', rows: []};
-const orphans = {id: 'orphans', title: 'O', summary: 's', warning: '', bytes: 20, count: 2, requiresPassword: true,
+const orphans = {id: 'orphans', title: 'O', summary: 's', warning: '', bytes: 20, count: 2, needsRoot: true,
   names: ['app', 'lib'], revision: 'abc', rows: []};
-const core = {id: 'coredumps', title: 'C', summary: 's', warning: 'se pierde', bytes: 30, count: 1, requiresPassword: true,
+const core = {id: 'coredumps', title: 'C', summary: 's', warning: 'se pierde', bytes: 30, count: 1, needsRoot: true,
   names: [], revision: '', rows: []};
 const listingJSON = JSON.stringify({categories: [tmp, cache, orphans, core]});
 const finishActive = (output, code = 0) => {

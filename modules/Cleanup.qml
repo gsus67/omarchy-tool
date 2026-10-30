@@ -174,7 +174,7 @@ Column {
       selection = JSON.stringify(names)
     }
     confirmation = { id: id, title: item.title, summary: item.summary, warning: item.warning, bytes: bytes,
-      names: names, selection: selection, requiresPassword: item.requiresPassword }
+      names: names, selection: selection, needsRoot: item.needsRoot }
   }
 
   function cancelClean() {
@@ -344,7 +344,7 @@ Column {
       }
 
       Text {
-        visible: row.confirming && root.confirmation.requiresPassword === true
+        visible: row.confirming && root.confirmation.needsRoot === true
         textFormat: Text.PlainText
         text: root.t("Pedirá tu contraseña.")
         color: Qt.darker(root.fg, 1.5)

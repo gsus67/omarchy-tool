@@ -68,6 +68,16 @@ class CleanupCase(unittest.TestCase):
         (directory / "maps").write_text(maps)
         return directory
 
+    def deep_tree(self, path):
+        """Deeper than Python's recursion limit, lowered so no runner's open file limit matters."""
+        limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(120)
+        self.addCleanup(sys.setrecursionlimit, limit)
+        path.mkdir()
+        for _ in range(180):
+            path = path / "d"
+            path.mkdir()
+
     def cli(self, *args, stdin=None):
         return subprocess.run([sys.executable, "-B", str(HELPER), *args], input=stdin, capture_output=True,
                               text=True, timeout=10, check=False)
@@ -88,11 +98,7 @@ class Measuring(CleanupCase):
                          size + (self.temp / "folder").lstat().st_blocks * 512)
 
     def test_a_very_deep_folder_is_not_a_crash(self):
-        path = self.temp / "deep"
-        path.mkdir()
-        for _ in range(1200):
-            path = path / "d"
-            path.mkdir()
+        self.deep_tree(self.temp / "deep")
         self.assertGreaterEqual(cleanup.allocated_bytes(self.temp / "deep"), 0)
 
     def test_usage_of_a_folder_does_not_follow_links(self):
@@ -344,9 +350,12 @@ class Temporales(CleanupCase):
         outside = self.write(self.root / "outside/keep", b"keep")
         entry = self.old_entry()
         identity = (entry.lstat().st_dev, entry.lstat().st_ino)
+        # Made first, so the file system can't hand the link the folder's old inode.
+        link = self.temp / "new-link"
+        link.symlink_to(outside.parent)
         (entry / "file").unlink()
         entry.rmdir()
-        entry.symlink_to(outside.parent)
+        os.replace(link, entry)
         descriptor = os.open(self.temp, os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, descriptor)
         with self.assertRaises(OSError):
@@ -429,11 +438,7 @@ class Temporales(CleanupCase):
         self.assertEqual(result["skippedCount"], 0)
 
     def test_a_very_deep_entry_is_skipped_not_a_crash(self):
-        path = self.temp / "deep"
-        path.mkdir()
-        for _ in range(1200):
-            path = path / "d"
-            path.mkdir()
+        self.deep_tree(self.temp / "deep")
         self.assertIsNone(cleanup.scan_temp(now=self.now))
         self.assertEqual(cleanup.clean_temp(now=self.now)["skippedNames"], ["deep"])
 
@@ -907,7 +912,7 @@ class Protocol(CleanupCase):
         self.write(self.temp / "old")
         with patch.object(cleanup.time, "time", return_value=self.now):
             category = cleanup.scan_temp()
-        self.assertEqual(set(category), {"id", "title", "summary", "warning", "bytes", "count", "requiresPassword",
+        self.assertEqual(set(category), {"id", "title", "summary", "warning", "bytes", "count", "needsRoot",
                                          "names", "revision", "rows"})
 
     def test_a_broken_temp_folder_hides_only_its_row(self):
