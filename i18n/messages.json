@@ -169,7 +169,12 @@
     "Aplicar": "Apply",
     "Cancelar": "Cancel",
     "falta el modo de IP": "missing IP mode",
-    "falta el proveedor de DNS": "missing DNS provider"
+    "falta el proveedor de DNS": "missing DNS provider",
+    "la carpeta de copias no puede estar dentro del prefijo de Proton": "the copies folder can't be inside the Proton prefix",
+    "la carpeta de copias no puede ser un enlace": "the copies folder can't be a link",
+    "no se pudieron leer los datos de Proton": "could not read the Proton data",
+    "no se pudo leer la carpeta de copias": "could not read the copies folder",
+    "acción de copias no válida": "invalid copies action"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",
