@@ -136,21 +136,20 @@ exe_proton_saves_folder() {
   output=$(exe_proton_saves_helper folder "${1:-}") || fail "$(exe_proton_saves_error "$output")"
   folder=$(jq -r .folder <<<"$output")
   config_update '.modules["exe-proton"].savesFolder = $folder' --arg folder "$folder"
-}
-
-exe_proton_saves_auto() {
-  case ${1:-} in
-    on) config_update '.modules["exe-proton"].savesAuto = true' ;;
-    off) config_update '.modules["exe-proton"].savesAuto = false' ;;
-    *) fail "$(tool_text 'usa on u off')" ;;
-  esac
+  # The switch needs a chosen folder, so going back to none also turns it off.
+  if [[ -n $folder ]]; then
+    operation_notice normal "$(tool_text 'Carpeta de copias guardada.')"
+  else
+    config_update '.modules["exe-proton"].savesAuto = false'
+    operation_notice normal "$(tool_text 'Copia automática desactivada.')"
+  fi
 }
 
 # Runs once per shell start, from `omarchy-tool apply`. It finishes here, so
 # nothing stays in the background, and it never blocks the rest of the start.
 exe_proton_startup() {
   local output
-  [[ $(config_get '.modules["exe-proton"].savesAuto // false') == true ]] || return 0
+  proton_saves_on || return 0
   if ! output=$(exe_proton_saves_helper auto); then
     operation_notice critical "$(tool_text 'no se pudo crear la copia automática: %1' "$(exe_proton_saves_error "$output")")"
   fi
