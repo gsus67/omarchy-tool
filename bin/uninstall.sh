@@ -129,6 +129,8 @@ fi
 # Our Omarchy menu row (written by `omarchy-tool apply`, tagged by its id).
 if [[ -f $menu ]]; then
   sed -i '/^  "omarchy-tool": {.*omarchy-shell omarchy-tool toggle/d' "$menu"
+  # Setup › Network › IP rows; the network keeps the settings chosen there.
+  sed -i -E '/^  "setup\.network\.ip(\.dhcp|\.custom)?": \{.*\/network-ip\.sh/d' "$menu"
 fi
 
 rm -rf -- "$state_dir" "$config_dir"
