@@ -190,7 +190,14 @@
     "Partidas y datos guardados.": "Saves and data stored.",
     "Partidas y datos cargados. Se conservó una copia previa.": "Saves and data loaded. A previous copy was kept.",
     "no se pudo completar la copia": "could not complete the copy",
-    "falta el nombre de la copia": "missing copy name"
+    "falta el nombre de la copia": "missing copy name",
+    "la carpeta de copias no está disponible; comprueba que el disco esté conectado": "the copies folder isn't available; check that the disk is connected",
+    "no hay nada que guardar": "there's nothing to save",
+    "escribe la ruta completa de la carpeta": "type the folder's full path",
+    "esa carpeta no existe": "that folder doesn't exist",
+    "no se pudo usar esa carpeta": "could not use that folder",
+    "usa on u off": "use on or off",
+    "no se pudo crear la copia automática: %1": "could not make the automatic copy: %1"
   },
   "es": {
     "--share needs a folder": "--share necesita una carpeta",

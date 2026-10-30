@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Whole copies of what Windows programs keep in the Proton prefix.
 
-Usage: exe-proton-saves.py list | preview NAME | save | load NAME
+Usage: exe-proton-saves.py list | preview NAME | save | load NAME | auto | folder PATH
 Prints one JSON object. Errors print {"error": <Spanish catalog source>} and
 exit 1, so the shell side can translate them.
 """
 from compression import zstd
 from datetime import datetime
 import errno
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,8 @@ EXCLUDED = ("AppData/Local/dxvk", "AppData/Local/Temp", "AppData/Local/Microsoft
             "AppData/Local/Programs", "AppData/Local/openvr", "AppData/Roaming/Microsoft")
 COPY_NAME = re.compile(r"^(partidas|automatica|antes-de-cargar)-\d{8}-\d{6}\.tar\.zst$")
 PROC_DIRECTORY = Path("/proc")
+COPIES_SUBFOLDER = "Partidas Proton"
+AUTO_KEEP = 5
 
 
 class SavesError(Exception):
@@ -35,11 +38,22 @@ class SavesError(Exception):
         self.source = source
 
 
+def module_config():
+    home = Path.home()
+    directory = os.environ.get("OMARCHY_TOOL_CONFIG_DIR") or Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "omarchy-tool"
+    try:
+        config = json.loads((Path(directory) / "config.json").read_text())
+        return config["modules"]["exe-proton"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
 def locations():
     """The canonical prefix and the copies directory (last component unresolved, to spot a link)."""
     home = Path.home()
     prefix = Path(os.environ.get("WINEPREFIX") or home / ".local/share/umu/default").resolve()
-    copies = Path(os.environ.get("OMARCHY_TOOL_PROTON_SAVES_DIR") or home / "Documents/Partidas Proton")
+    override = os.environ.get("OMARCHY_TOOL_PROTON_SAVES_DIR")
+    copies = Path(override) if override else Path(module_config().get("savesFolder") or home / "Documents") / COPIES_SUBFOLDER
     copies = copies.parent.resolve() / copies.name
     if copies == prefix or prefix in copies.parents:
         raise SavesError("la carpeta de copias no puede estar dentro del prefijo de Proton")
@@ -120,12 +134,22 @@ def list_copies(copies):
     return sorted(found, key=lambda copy: (-copy["timestamp"], copy["name"]))
 
 
+def folder_available(copies):
+    """A chosen folder keeps its subfolder: without it the disk is probably not mounted,
+    and creating it would write to the system disk. The default folder is made on demand."""
+    chosen = module_config().get("savesFolder") and not os.environ.get("OMARCHY_TOOL_PROTON_SAVES_DIR")
+    return not chosen or copies.is_dir()
+
+
 def list_saves():
     prefix, copies = locations()
     exists = (prefix / USER_DIRECTORY).is_dir()
     return {"prefixExists": exists,
             "groups": group_entries(scan_prefix(prefix)) if exists else [],
-            "copies": list_copies(copies)}
+            "copies": list_copies(copies),
+            "folder": str(copies.parent),
+            "folderAvailable": folder_available(copies),
+            "auto": module_config().get("savesAuto") is True}
 
 
 def open_copy(name):
@@ -175,8 +199,6 @@ def validated_members(archive):
             members.append(member)
     except (tarfile.TarError, EOFError, OSError, ValueError, zstd.ZstdError) as error:
         raise SavesError("la copia está dañada") from error
-    if not members:
-        raise SavesError("la copia está dañada")
     for name in seen:
         if any(str(parent) in files for parent in PurePosixPath(name).parents):
             raise SavesError("la copia contiene rutas no permitidas")
@@ -277,7 +299,9 @@ def write_copy(prefix, copies, kind, now=None):
     return name
 
 
-def require_closed_prefix(prefix):
+def require_ready(prefix, copies):
+    if not folder_available(copies):
+        raise SavesError("la carpeta de copias no está disponible; comprueba que el disco esté conectado")
     if proton_open():
         raise SavesError("cierra Proton antes de guardar o cargar")
     if not (prefix / USER_DIRECTORY).is_dir():
@@ -286,8 +310,86 @@ def require_closed_prefix(prefix):
 
 def save_copy():
     prefix, copies = locations()
-    require_closed_prefix(prefix)
+    require_ready(prefix, copies)
+    if not group_entries(scan_prefix(prefix)):
+        raise SavesError("no hay nada que guardar")
     return {"name": write_copy(prefix, copies, "partidas")}
+
+
+def fingerprint(prefix, copies, entries):
+    """Changes when a file or the destination does, without reading any contents."""
+    user = prefix / USER_DIRECTORY
+    digest = hashlib.sha256(str(copies).encode())
+    for name, _ in entries:
+        status = os.lstat(user / name)
+        digest.update(f"\0{name}\0{status.st_size}\0{status.st_mtime_ns}".encode(errors="surrogateescape"))
+    return digest.hexdigest()
+
+
+def prune_automatic(copies, keep=AUTO_KEEP):
+    """Only automatic copies are ever deleted, the oldest first."""
+    automatic = [copy for copy in list_copies(copies) if copy["kind"] == "automatica"]
+    for copy in automatic[keep:]:
+        try:
+            (copies / copy["name"]).unlink()
+        except OSError:
+            pass  # Retried at the next automatic copy.
+
+
+def fingerprint_file():
+    home = Path.home()
+    state = os.environ.get("OMARCHY_TOOL_STATE_DIR") or Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "omarchy-tool"
+    return Path(state) / "exe-proton-saves.fingerprint"
+
+
+def auto_copy():
+    """The startup copy: nothing to do is not a failure, a missing disk is."""
+    if module_config().get("savesAuto") is not True:
+        return {"name": None}
+    prefix, copies = locations()
+    if not (prefix / USER_DIRECTORY).is_dir() or proton_open():
+        return {"name": None}
+    if not folder_available(copies):
+        raise SavesError("la carpeta de copias no está disponible; comprueba que el disco esté conectado")
+    entries = scan_prefix(prefix)
+    if not group_entries(entries):
+        return {"name": None}
+    try:
+        current = fingerprint(prefix, copies, entries)
+        record = fingerprint_file()
+        has_automatic = any(copy["kind"] == "automatica" for copy in list_copies(copies))
+        if has_automatic and record.is_file() and record.read_text() == current:
+            return {"name": None}
+        name = write_copy(prefix, copies, "automatica")
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(current)
+    except OSError as error:
+        raise SavesError("no se pudo guardar la copia") from error
+    prune_automatic(copies)
+    return {"name": name}
+
+
+def choose_folder(path):
+    """Check a folder the user typed and make its subfolder; "" goes back to the default."""
+    if not path:
+        return {"folder": ""}
+    folder = Path(path).expanduser()
+    if not folder.is_absolute():
+        raise SavesError("escribe la ruta completa de la carpeta")
+    folder = folder.resolve()
+    if not folder.is_dir():
+        raise SavesError("esa carpeta no existe")
+    prefix = Path(os.environ.get("WINEPREFIX") or Path.home() / ".local/share/umu/default").resolve()
+    if folder == prefix or prefix in folder.parents:
+        raise SavesError("la carpeta de copias no puede estar dentro del prefijo de Proton")
+    copies = folder / COPIES_SUBFOLDER
+    if copies.is_symlink():
+        raise SavesError("la carpeta de copias no puede ser un enlace")
+    try:
+        private_directory(copies)
+    except OSError as error:
+        raise SavesError("no se pudo usar esa carpeta") from error
+    return {"folder": str(folder)}
 
 
 def validate_destinations(prefix, members):
@@ -325,7 +427,7 @@ def apply_staged(staging, user, members):
 
 def load_copy(name):
     prefix, copies = locations()
-    require_closed_prefix(prefix)
+    require_ready(prefix, copies)
     user = prefix / USER_DIRECTORY
     staging = None
     with open_copy(name) as copy, open_archive(copy) as archive:
@@ -363,6 +465,10 @@ def main(argv):
             result = save_copy()
         elif len(argv) == 2 and argv[0] == "load":
             result = load_copy(argv[1])
+        elif argv == ["auto"]:
+            result = auto_copy()
+        elif len(argv) == 2 and argv[0] == "folder":
+            result = choose_folder(argv[1])
         else:
             raise SavesError("acción de copias no válida")
     except SavesError as error:

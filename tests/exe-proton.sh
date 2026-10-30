@@ -204,8 +204,6 @@ check "exe-proton copied uninstall cancellation retains ownership" '! OMARCHY_TO
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "exe-proton copied uninstaller restores MIME and removes state but never saves" '[[ ! -d $OMARCHY_TOOL_STATE_DIR && ! -e $proton_entry && ! -e $OMARCHY_TOOL_TEST_UMU && -f $HOME/.local/share/umu/default/drive_c/saves && $(xdg-mime query default application/x-ms-dos-executable) == old-exe.desktop && -z $(xdg-mime query default application/x-msi) ]]'
 check "exe-proton uninstall is idempotent without privilege" 'OMARCHY_TOOL_PRIV=false bash "$repo/bin/uninstall.sh" "$work/missing-plugin"'
-cp "$work/icons-pacman" "$work/quiet-bin/pacman"
-export OMARCHY_TOOL_PRIV=""
 
 # --- Proton save copies: same throwaway home, default prefix and folder.
 export OMARCHY_TOOL_WINESERVER_PID=""
@@ -238,6 +236,21 @@ check "loading waits for the lock" 'timeout 0.5 "$tool" exe-proton saves-load "$
 printf '\n' >"$work/release-lock"
 wait "$lock_holder"
 
+# The automatic copy: once at startup, nothing left running, nothing while off.
+check "apply makes no automatic copy while off" '"$tool" apply && [[ -z $(find "$saves_dir" -name "automatica-*") ]]'
+check "apply copies once when on, then skips unchanged data" '"$tool" exe-proton saves-auto on && "$tool" apply && "$tool" apply && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == 1 ]]'
+printf 'cambio' >"$saves_user/Saved Games/Mi Juego/slot.sav"
+check "enabling and disabling never make the startup copy" '"$tool" exe-proton enable && "$tool" exe-proton disable && [[ $(find "$saves_dir" -name "automatica-*" | wc -l) == 1 ]]'
+check "folder action refuses missing paths and the prefix" '! "$tool" exe-proton saves-folder "$work/missing" 2>/dev/null && ! "$tool" exe-proton saves-folder "$saves_user" 2>/dev/null'
+mkdir -p "$work/disk with space"
+check "folder action stores the chosen folder" '"$tool" exe-proton saves-folder "$work/disk with space" && [[ $("$tool" exe-proton saves-list | jq -r .folder) == "$work/disk with space" && -d "$work/disk with space/Partidas Proton" ]]'
+rm -rf "$work/disk with space/Partidas Proton"
+: >"$work/notify-all.log"
+check "unavailable folder notifies without failing apply" '"$tool" apply && grep -qF "no se pudo crear la copia automática" "$work/notify-all.log" && [[ ! -e "$work/disk with space/Partidas Proton" ]]'
+check "empty folder returns to the default" '"$tool" exe-proton saves-folder "" && [[ $("$tool" exe-proton saves-list | jq -r .folder) == "$HOME/Documents" ]]'
+check "automatic copy can be switched off" '"$tool" exe-proton saves-auto off && [[ $("$tool" exe-proton saves-list | jq -r .auto) == false ]]'
+check "automatic switch refuses anything else" '! "$tool" exe-proton saves-auto maybe 2>/dev/null'
+
 # Neither switching off nor uninstalling touches a copy.
 saves_sum=$(find "$saves_dir" -type f -exec md5sum {} + | sort)
 "$tool" exe-proton enable
@@ -246,3 +259,5 @@ check "disabling keeps every copy" '[[ $(find "$saves_dir" -type f -exec md5sum 
 "$tool" apply
 bash "$OMARCHY_TOOL_STATE_DIR/uninstall.sh" "$work/missing-plugin"
 check "uninstalling keeps every copy" '[[ $(find "$saves_dir" -type f -exec md5sum {} + | sort) == "$saves_sum" ]]'
+cp "$work/icons-pacman" "$work/quiet-bin/pacman"
+export OMARCHY_TOOL_PRIV=""

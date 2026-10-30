@@ -2,6 +2,7 @@
 import importlib.util
 from datetime import datetime
 import io
+import json
 import os
 from pathlib import Path
 import random
@@ -476,6 +477,149 @@ class Loading(ArchiveSafety):
         self.assertEqual((self.user / "Saved Games/Game/slot").read_bytes(), b"current")
         self.assertEqual(len([copy for copy in saves.list_saves()["copies"] if copy["kind"] == "antes-de-cargar"]), 1)
         self.assertEqual([path.name for path in self.user.parent.iterdir()], ["steamuser"])
+
+
+class ChosenFolderAndAutomatic(ProtonSaves):
+    def setUp(self):
+        super().setUp()
+        self.chosen = self.root / "disco"
+        self.chosen.mkdir()
+        self.put("Saved Games/Game/slot", b"1")
+
+    def configure(self, **module):
+        config = self.root / "config"
+        config.mkdir(exist_ok=True)
+        (config / "config.json").write_text(json.dumps({"modules": {"exe-proton": module}}))
+
+    def use_config_only(self):
+        environment = patch.dict(os.environ, {"OMARCHY_TOOL_PROTON_SAVES_DIR": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_chosen_folder_holds_copies_in_its_subfolder(self):
+        self.use_config_only()
+        self.configure(savesFolder=str(self.chosen))
+        saves.choose_folder(str(self.chosen))
+        self.assertEqual(saves.locations()[1], self.chosen / "Partidas Proton")
+        name = saves.save_copy()["name"]
+        self.assertTrue((self.chosen / "Partidas Proton" / name).is_file())
+        result = saves.list_saves()
+        self.assertEqual(result["folder"], str(self.chosen))
+        self.assertTrue(result["folderAvailable"])
+
+    def test_missing_subfolder_means_disk_gone_and_is_never_recreated(self):
+        self.use_config_only()
+        self.configure(savesFolder=str(self.chosen))
+        with self.assertRaises(saves.SavesError) as caught:
+            saves.save_copy()
+        self.assertEqual(caught.exception.source, "la carpeta de copias no está disponible; comprueba que el disco esté conectado")
+        self.assertFalse((self.chosen / "Partidas Proton").exists())
+        self.assertFalse(saves.list_saves()["folderAvailable"])
+
+    def test_default_folder_is_created_on_demand(self):
+        self.use_config_only()
+        saves.save_copy()
+        self.assertEqual(len(list((self.root / "home/Documents/Partidas Proton").iterdir())), 1)
+        self.assertTrue(saves.list_saves()["folderAvailable"])
+
+    def test_choosing_refuses_missing_relative_and_prefix_folders(self):
+        self.use_config_only()
+        for path in (str(self.root / "missing"), "relativa", str(self.user), str(self.prefix)):
+            with self.subTest(path=path):
+                with self.assertRaises(saves.SavesError):
+                    saves.choose_folder(path)
+
+    def test_choosing_returns_the_real_path_and_empty_means_default(self):
+        self.use_config_only()
+        link = self.root / "enlace"
+        link.symlink_to(self.chosen)
+        self.assertEqual(saves.choose_folder(str(link)), {"folder": str(self.chosen)})
+        self.assertTrue((self.chosen / "Partidas Proton").is_dir())
+        self.assertEqual(saves.choose_folder(""), {"folder": ""})
+
+    def test_chmod_refused_by_the_disk_does_not_fail_saving(self):
+        with patch.object(saves.os, "chmod", side_effect=PermissionError(1, "not permitted")):
+            self.assertRegex(saves.save_copy()["name"], r"^partidas-")
+
+    def test_saving_nothing_is_refused(self):
+        shutil.rmtree(self.user / "Saved Games")
+        with self.assertRaises(saves.SavesError) as caught:
+            saves.save_copy()
+        self.assertEqual(caught.exception.source, "no hay nada que guardar")
+
+    def test_load_into_an_empty_prefix_keeps_a_viewable_previous_copy(self):
+        name = saves.save_copy()["name"]
+        shutil.rmtree(self.user / "Saved Games")
+        safety = saves.load_copy(name)["safetyCopy"]
+        self.assertEqual(saves.preview_copy(safety)["groups"], [])
+
+    def test_auto_off_makes_no_copy(self):
+        self.assertIsNone(saves.auto_copy()["name"])
+        self.assertFalse(self.copies.exists())
+
+    def test_auto_skips_when_nothing_changed(self):
+        self.configure(savesAuto=True)
+        self.assertRegex(saves.auto_copy()["name"], r"^automatica-")
+        self.assertIsNone(saves.auto_copy()["name"])
+
+    def test_auto_copies_again_when_data_changed(self):
+        self.configure(savesAuto=True)
+        fixed = [datetime(2026, 10, 30, 8, 0, 0), datetime(2026, 10, 30, 8, 0, 1)]
+        with patch.object(saves, "datetime", wraps=saves.datetime) as clock:
+            clock.now.side_effect = fixed
+            saves.auto_copy()
+            self.put("Saved Games/Game/slot", b"12")
+            self.assertIsNotNone(saves.auto_copy()["name"])
+
+    def test_auto_copies_again_when_the_folder_changed_or_its_copies_are_gone(self):
+        self.configure(savesAuto=True)
+        first = saves.auto_copy()["name"]
+        (self.copies / first).unlink()
+        fixed = datetime(2026, 10, 30, 8, 0, 1)
+        with patch.object(saves, "datetime", wraps=saves.datetime) as clock:
+            clock.now.return_value = fixed
+            self.assertIsNotNone(saves.auto_copy()["name"])
+
+    def test_auto_with_open_proton_makes_no_copy_and_no_error(self):
+        self.configure(savesAuto=True)
+        with patch.dict(os.environ, {"OMARCHY_TOOL_WINESERVER_PID": "4242"}):
+            self.assertIsNone(saves.auto_copy()["name"])
+        self.assertFalse(self.copies.exists())
+
+    def test_auto_with_the_disk_gone_is_an_error(self):
+        self.use_config_only()
+        self.configure(savesAuto=True, savesFolder=str(self.chosen))
+        with self.assertRaises(saves.SavesError):
+            saves.auto_copy()
+
+    def test_auto_with_nothing_to_save_makes_no_copy(self):
+        self.configure(savesAuto=True)
+        shutil.rmtree(self.user / "Saved Games")
+        self.assertIsNone(saves.auto_copy()["name"])
+        self.assertFalse(self.copies.exists())
+
+    def test_failed_auto_copy_keeps_the_old_fingerprint_so_it_retries(self):
+        self.configure(savesAuto=True)
+        with patch.object(saves, "write_copy", side_effect=saves.SavesError("no se pudo guardar la copia")):
+            with self.assertRaises(saves.SavesError):
+                saves.auto_copy()
+        self.assertIsNotNone(saves.auto_copy()["name"])
+
+    def test_prune_keeps_five_newest_automatic_and_every_other_kind(self):
+        self.copies.mkdir()
+        for minute in range(8):
+            path = self.copies / f"automatica-20261030-08{minute:02d}00.tar.zst"
+            path.write_bytes(b"x")
+            os.utime(path, (1000 + minute, 1000 + minute))
+        manual = self.copies / "partidas-20200101-000000.tar.zst"
+        safety = self.copies / "antes-de-cargar-20200101-000000.tar.zst"
+        manual.write_bytes(b"x")
+        safety.write_bytes(b"x")
+        saves.prune_automatic(self.copies)
+        self.assertEqual(sorted(path.name for path in self.copies.glob("automatica-*")),
+                         [f"automatica-20261030-08{minute:02d}00.tar.zst" for minute in range(3, 8)])
+        self.assertTrue(manual.exists())
+        self.assertTrue(safety.exists())
 
 
 if __name__ == "__main__":
